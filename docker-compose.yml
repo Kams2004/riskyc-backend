@@ -1,12 +1,14 @@
 services:
   postgres:
     image: postgres:16-alpine
+    container_name: riskyc-postgres
+    restart: unless-stopped
     environment:
       POSTGRES_DB: riskyc
       POSTGRES_USER: riskyc
-      POSTGRES_PASSWORD: riskyc
-    ports:
-      - "5432:5432"
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-riskyc}
+    # Not published to the host — only the backend container needs it,
+    # reached over the internal riskyc-net network below.
     volumes:
       - riskyc-postgres-data:/var/lib/postgresql/data
     healthcheck:
@@ -14,16 +16,20 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - riskyc-net
 
   minio:
     image: minio/minio:latest
+    container_name: riskyc-minio
+    restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadmin
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # Web console
+      - "${MINIO_API_PORT:-9002}:9000"   # S3 API — must stay public, presigned URLs point here
+      - "${MINIO_CONSOLE_PORT:-9003}:9001" # Web console
     volumes:
       - riskyc-minio-data:/data
     healthcheck:
@@ -31,7 +37,43 @@ services:
       interval: 5s
       timeout: 5s
       retries: 10
+    networks:
+      - riskyc-net
+
+  backend:
+    build: .
+    image: riskyc-backend:latest
+    container_name: riskyc-backend
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      minio:
+        condition: service_healthy
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/riskyc
+      DB_USERNAME: riskyc
+      DB_PASSWORD: ${POSTGRES_PASSWORD:-riskyc}
+      # Internal endpoint — fast, stays on the Docker network, used for the
+      # backend's own upload/delete/stream calls to MinIO.
+      MINIO_ENDPOINT: http://minio:9000
+      # Public endpoint — the ONLY thing a browser can reach. Used solely to
+      # sign presigned GET URLs so they resolve outside the Docker network.
+      MINIO_PUBLIC_BASE_URL: http://${PUBLIC_HOST:-167.86.120.214}:${MINIO_API_PORT:-9002}
+      MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: riskyc-media
+      CORS_ALLOWED_ORIGINS: http://${PUBLIC_HOST:-167.86.120.214}:${FRONTEND_PORT:-3001}
+      JWT_SECRET: ${JWT_SECRET:-cmlza3ljLWZhc2hpb24tZGV2LW9ubHktand0LXNpZ25pbmcta2V5LWNoYW5nZS1pbi1wcm9k}
+    ports:
+      - "${BACKEND_PORT:-8082}:8080"
+    networks:
+      - riskyc-net
 
 volumes:
   riskyc-postgres-data:
   riskyc-minio-data:
+
+networks:
+  riskyc-net:
+    name: riskyc-net

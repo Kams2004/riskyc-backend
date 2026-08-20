@@ -1,0 +1,17 @@
+package com.fashion.Riskyc.entity;
+
+public enum Permission {
+    VIEW_DASHBOARD,
+    VIEW_ORDERS,
+    MANAGE_ORDERS,
+    VIEW_PRODUCTS,
+    MANAGE_PRODUCTS,
+    VIEW_CATEGORIES,
+    MANAGE_CATEGORIES,
+    VIEW_CHAT,
+    MANAGE_CHAT,
+    VIEW_USERS,
+    MANAGE_USERS,
+    VIEW_CUSTOMERS,
+    MANAGE_CUSTOMERS
+}

@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import com.fashion.Riskyc.security.CurrentAdmin;
 
 import java.util.List;
 import java.util.UUID;
@@ -42,6 +43,7 @@ public class CategoryService {
                 .slug(request.slug())
                 .name(request.name())
                 .icon(request.icon())
+                .createdByName(CurrentAdmin.nameOrNull())
                 .build());
         return toResponse(saved);
     }
@@ -117,7 +119,7 @@ public class CategoryService {
                 ? s3MediaService.getPresignedUrl(c.getImageStorageKey())
                 : null;
         return new CategoryResponse(
-                c.getId(), c.getSlug(), c.getName(), c.getIcon(), imageUrl,
+                c.getId(), c.getSlug(), c.getName(), c.getIcon(), imageUrl, c.getCreatedByName(),
                 c.getSubcategories().stream().map(this::toResponse).toList()
         );
     }

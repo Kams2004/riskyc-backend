@@ -9,6 +9,7 @@ public record CategoryResponse(
         String name,
         String icon,
         String imageUrl,
+        String createdByName,
         List<SubcategoryResponse> subcategories
 ) {
 }

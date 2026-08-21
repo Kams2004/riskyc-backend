@@ -10,6 +10,7 @@ import com.fashion.Riskyc.repository.ChatMessageRepository;
 import com.fashion.Riskyc.repository.ConversationRepository;
 import com.fashion.Riskyc.repository.CustomerRepository;
 import com.fashion.Riskyc.repository.OrderRepository;
+import com.fashion.Riskyc.security.CurrentAdmin;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -86,6 +87,7 @@ public class ConversationService {
                 .conversation(conversation)
                 .sender(request.sender())
                 .text(request.text())
+                .adminSenderName(request.sender() == MessageSender.ADMIN ? CurrentAdmin.nameOrNull() : null)
                 .build();
         // Flush so @CreationTimestamp populates message.timestamp before we
         // serialize and broadcast it — dirty-checking alone wouldn't apply
@@ -120,6 +122,7 @@ public class ConversationService {
                 .sender(sender)
                 .text(text != null ? text : "")
                 .imageStorageKey(key)
+                .adminSenderName(sender == MessageSender.ADMIN ? CurrentAdmin.nameOrNull() : null)
                 .build();
         message = chatMessageRepository.saveAndFlush(message);
         conversation.getMessages().add(message);
@@ -176,6 +179,6 @@ public class ConversationService {
 
     private ChatMessageResponse toResponse(ChatMessage m) {
         String imageUrl = m.getImageStorageKey() != null ? s3MediaService.getPresignedUrl(m.getImageStorageKey()) : null;
-        return new ChatMessageResponse(m.getId(), m.getConversation().getId(), m.getSender(), m.getText(), imageUrl, m.getTimestamp());
+        return new ChatMessageResponse(m.getId(), m.getConversation().getId(), m.getSender(), m.getText(), imageUrl, m.getAdminSenderName(), m.getTimestamp());
     }
 }

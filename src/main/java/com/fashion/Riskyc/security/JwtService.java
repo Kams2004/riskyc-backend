@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 public class JwtService {
 
     private static final String CLAIM_EMAIL = "email";
+    private static final String CLAIM_NAME = "name";
     private static final String CLAIM_ROLE_ID = "roleId";
     private static final String CLAIM_ROLE_NAME = "roleName";
     private static final String CLAIM_PERMISSIONS = "permissions";
@@ -50,6 +51,7 @@ public class JwtService {
         return Jwts.builder()
                 .subject(user.getId().toString())
                 .claim(CLAIM_EMAIL, user.getEmail())
+                .claim(CLAIM_NAME, user.getFirstName() + " " + user.getLastName())
                 .claim(CLAIM_ROLE_ID, user.getRole().getId().toString())
                 .claim(CLAIM_ROLE_NAME, user.getRole().getName())
                 .claim(CLAIM_PERMISSIONS, permissionNames)
@@ -76,6 +78,7 @@ public class JwtService {
         return new AdminPrincipal(
                 claims.getSubject(),
                 claims.get(CLAIM_EMAIL, String.class),
+                claims.get(CLAIM_NAME, String.class),
                 claims.get(CLAIM_ROLE_ID, String.class),
                 claims.get(CLAIM_ROLE_NAME, String.class),
                 permissions

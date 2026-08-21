@@ -5,5 +5,7 @@ public enum OrderStatus {
     AWAITING_PAYMENT,
     REVIEWING,
     VALIDATED,
+    PACKAGING,
+    PACKAGED,
     CANCELLED
 }

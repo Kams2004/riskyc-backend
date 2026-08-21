@@ -32,6 +32,9 @@ public class Category {
     /** MinIO object key for the cover photo shown on storefront category cards — null until an admin uploads one. */
     private String imageStorageKey;
 
+    /** Which admin created this category — a name snapshot, not a live FK. */
+    private String createdByName;
+
     @OneToMany(mappedBy = "category", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<Subcategory> subcategories = new ArrayList<>();

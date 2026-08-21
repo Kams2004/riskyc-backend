@@ -36,6 +36,14 @@ public class ChatMessage {
     /** MinIO object key for an attached photo — null for plain-text messages. */
     private String imageStorageKey;
 
+    /**
+     * Which staff member sent this (only set when {@code sender == ADMIN}
+     * and the request carried a valid admin session). The customer-facing
+     * widget never renders this — it always shows "Riskyc" — but the admin
+     * inbox uses it so staff can see who answered.
+     */
+    private String adminSenderName;
+
     @CreationTimestamp
     @Column(updatable = false)
     private Instant timestamp;

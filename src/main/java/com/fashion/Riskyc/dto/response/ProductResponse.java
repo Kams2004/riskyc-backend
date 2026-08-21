@@ -24,6 +24,7 @@ public record ProductResponse(
         List<ProductColorResponse> colors,
         /** Presigned URLs already resolved — zero extra round-trips for the client. */
         List<MediaResponse> media,
+        String createdByName,
         Instant createdAt,
         Instant updatedAt
 ) {

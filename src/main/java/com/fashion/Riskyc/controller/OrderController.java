@@ -55,4 +55,14 @@ public class OrderController {
     public OrderResponse updateStatus(@PathVariable UUID id, @Valid @RequestBody UpdateOrderStatusRequest request) {
         return orderService.updateStatus(id, request.status());
     }
+
+    @PatchMapping("/{id}/packaging/start")
+    public OrderResponse startPackaging(@PathVariable UUID id) {
+        return orderService.startPackaging(id);
+    }
+
+    @PatchMapping("/{id}/packaging/complete")
+    public OrderResponse completePackaging(@PathVariable UUID id) {
+        return orderService.completePackaging(id);
+    }
 }

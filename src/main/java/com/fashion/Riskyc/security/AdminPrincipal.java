@@ -8,6 +8,7 @@ import java.util.Set;
 public record AdminPrincipal(
         String userId,
         String email,
+        String name,
         String roleId,
         String roleName,
         Set<Permission> permissions

@@ -84,6 +84,9 @@ public class Product {
     @Builder.Default
     private List<ProductMedia> media = new ArrayList<>();
 
+    /** Which admin created this product — a name snapshot, not a live FK. */
+    private String createdByName;
+
     @CreationTimestamp
     @Column(updatable = false)
     private Instant createdAt;

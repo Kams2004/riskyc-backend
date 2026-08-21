@@ -54,6 +54,17 @@ public class Order {
     /** MinIO object key of the payment proof screenshot the customer uploaded, if any. */
     private String paymentScreenshotKey;
 
+    // ── Audit trail — who did what, and when. Names are snapshotted (not a
+    // live FK to AdminUser) so history reads correctly even if that admin
+    // account is later renamed or deleted. ──
+    private String statusChangedByName;
+    private Instant statusChangedAt;
+
+    private String packagingStartedByName;
+    private Instant packagingStartedAt;
+    private String packagingCompletedByName;
+    private Instant packagingCompletedAt;
+
     @CreationTimestamp
     @Column(updatable = false)
     private Instant createdAt;

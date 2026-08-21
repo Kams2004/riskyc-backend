@@ -18,6 +18,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+import com.fashion.Riskyc.security.CurrentAdmin;
 
 import java.util.List;
 import java.util.UUID;
@@ -73,6 +74,7 @@ public class ProductService {
 
     public ProductResponse create(ProductRequest request) {
         Product product = new Product();
+        product.setCreatedByName(CurrentAdmin.nameOrNull());
         applyRequest(product, request);
         // Flush so @CreationTimestamp/@UpdateTimestamp are populated before we
         // serialize the response (they're set by Hibernate at flush time).
@@ -194,6 +196,7 @@ public class ProductService {
                 p.isHidden(),
                 colors,
                 media,
+                p.getCreatedByName(),
                 p.getCreatedAt(),
                 p.getUpdatedAt()
         );

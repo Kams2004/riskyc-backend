@@ -19,6 +19,12 @@ public record OrderResponse(
         String paymentCode,
         /** Presigned URL for the uploaded payment proof, if any — resolved server-side. */
         String paymentScreenshotUrl,
+        String statusChangedByName,
+        Instant statusChangedAt,
+        String packagingStartedByName,
+        Instant packagingStartedAt,
+        String packagingCompletedByName,
+        Instant packagingCompletedAt,
         Instant createdAt,
         Instant updatedAt
 ) {

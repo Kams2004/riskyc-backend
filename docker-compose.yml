@@ -59,11 +59,17 @@ services:
       MINIO_ENDPOINT: http://minio:9000
       # Public endpoint — the ONLY thing a browser can reach. Used solely to
       # sign presigned GET URLs so they resolve outside the Docker network.
-      MINIO_PUBLIC_BASE_URL: http://${PUBLIC_HOST:-167.86.120.214}:${MINIO_API_PORT:-9002}
+      # Full URL (scheme + host, no assumed port) — set MINIO_PUBLIC_URL in
+      # .env once you're behind nginx/HTTPS instead of raw IP:port. Compose
+      # interpolation doesn't support nesting, so the fallback here is a
+      # plain literal, not a computed PUBLIC_HOST/port combo.
+      MINIO_PUBLIC_BASE_URL: ${MINIO_PUBLIC_URL:-http://167.86.120.214:9002}
       MINIO_ACCESS_KEY: ${MINIO_ROOT_USER:-minioadmin}
       MINIO_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-minioadmin}
       MINIO_BUCKET: riskyc-media
-      CORS_ALLOWED_ORIGINS: http://${PUBLIC_HOST:-167.86.120.214}:${FRONTEND_PORT:-3001}
+      # Full URL of the frontend, for CORS — set FRONTEND_URL in .env once
+      # you're behind a domain/HTTPS proxy instead of IP:port.
+      CORS_ALLOWED_ORIGINS: ${FRONTEND_URL:-http://167.86.120.214:3001}
       JWT_SECRET: ${JWT_SECRET:-cmlza3ljLWZhc2hpb24tZGV2LW9ubHktand0LXNpZ25pbmcta2V5LWNoYW5nZS1pbi1wcm9k}
     ports:
       - "${BACKEND_PORT:-8082}:8080"

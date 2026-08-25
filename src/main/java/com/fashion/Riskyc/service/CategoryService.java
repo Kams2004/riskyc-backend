@@ -7,8 +7,10 @@ import com.fashion.Riskyc.dto.response.SubcategoryResponse;
 import com.fashion.Riskyc.entity.Category;
 import com.fashion.Riskyc.entity.Subcategory;
 import com.fashion.Riskyc.exception.BadRequestException;
+import com.fashion.Riskyc.exception.ConflictException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
 import com.fashion.Riskyc.repository.CategoryRepository;
+import com.fashion.Riskyc.repository.ProductRepository;
 import com.fashion.Riskyc.repository.SubcategoryRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -28,6 +30,7 @@ public class CategoryService {
 
     private final CategoryRepository categoryRepository;
     private final SubcategoryRepository subcategoryRepository;
+    private final ProductRepository productRepository;
     private final S3MediaService s3MediaService;
 
     @Transactional(readOnly = true)
@@ -38,6 +41,9 @@ public class CategoryService {
     public CategoryResponse create(CategoryRequest request) {
         if (categoryRepository.existsBySlug(request.slug())) {
             throw new BadRequestException("A category with slug '" + request.slug() + "' already exists");
+        }
+        if (categoryRepository.existsByNameIgnoreCase(request.name())) {
+            throw new BadRequestException("A category named '" + request.name() + "' already exists");
         }
         Category saved = categoryRepository.save(Category.builder()
                 .slug(request.slug())
@@ -50,6 +56,9 @@ public class CategoryService {
 
     public CategoryResponse update(UUID id, CategoryRequest request) {
         Category category = getOrThrow(id);
+        if (categoryRepository.existsByNameIgnoreCaseAndIdNot(request.name(), id)) {
+            throw new BadRequestException("A category named '" + request.name() + "' already exists");
+        }
         category.setSlug(request.slug());
         category.setName(request.name());
         category.setIcon(request.icon());
@@ -58,6 +67,10 @@ public class CategoryService {
 
     public void delete(UUID id) {
         Category category = getOrThrow(id);
+        if (productRepository.existsByCategoryId(id)) {
+            throw new ConflictException(
+                    "\"" + category.getName() + "\" still has products assigned to it. Delete those products first.");
+        }
         if (category.getImageStorageKey() != null) {
             s3MediaService.delete(category.getImageStorageKey());
         }
@@ -104,10 +117,13 @@ public class CategoryService {
     }
 
     public void deleteSubcategory(UUID subcategoryId) {
-        if (!subcategoryRepository.existsById(subcategoryId)) {
-            throw ResourceNotFoundException.of("Subcategory", subcategoryId);
+        Subcategory sub = subcategoryRepository.findById(subcategoryId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Subcategory", subcategoryId));
+        if (productRepository.existsBySubcategoryId(subcategoryId)) {
+            throw new ConflictException(
+                    "\"" + sub.getName() + "\" still has products assigned to it. Delete those products first.");
         }
-        subcategoryRepository.deleteById(subcategoryId);
+        subcategoryRepository.delete(sub);
     }
 
     private Category getOrThrow(UUID id) {

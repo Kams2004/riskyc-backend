@@ -27,6 +27,10 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     Page<Product> findByCategorySlugAndSubcategorySlugAndHiddenFalse(
             String categorySlug, String subcategorySlug, Pageable pageable);
 
+    boolean existsByCategoryId(UUID categoryId);
+
+    boolean existsBySubcategoryId(UUID subcategoryId);
+
     @Query("""
             select p from Product p
             where p.hidden = false

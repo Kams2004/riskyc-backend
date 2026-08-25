@@ -13,6 +13,7 @@ public record ProductResponse(
         String description,
         BigDecimal price,
         BigDecimal originalPrice,
+        Integer promoMediaIndex,
         String categorySlug,
         String subcategorySlug,
         List<String> sizes,

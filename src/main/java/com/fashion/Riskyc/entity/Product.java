@@ -38,6 +38,9 @@ public class Product {
     @Column(precision = 12, scale = 2)
     private BigDecimal originalPrice;
 
+    /** Index into {@code media} (upload order) of the image that carries the promo-price ribbon, if any. */
+    private Integer promoMediaIndex;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
     private Category category;

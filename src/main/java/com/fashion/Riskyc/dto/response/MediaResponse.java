@@ -16,6 +16,7 @@ public record MediaResponse(
         MediaType type,
         String contentType,
         Long sizeBytes,
+        String promoLabel,
         Instant uploadedAt
 ) {
 }

@@ -114,6 +114,14 @@ public class ProductService {
         return toMediaResponse(media);
     }
 
+    public MediaResponse updateMediaPromoLabel(UUID mediaId, String text) {
+        ProductMedia media = productMediaRepository.findById(mediaId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Media", mediaId));
+        String trimmed = text == null ? null : text.trim();
+        media.setPromoLabel(trimmed == null || trimmed.isEmpty() ? null : trimmed);
+        return toMediaResponse(media);
+    }
+
     public void deleteMedia(UUID mediaId) {
         ProductMedia media = productMediaRepository.findById(mediaId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Media", mediaId));
@@ -137,7 +145,6 @@ public class ProductService {
         product.setDescription(request.description());
         product.setPrice(request.price());
         product.setOriginalPrice(request.originalPrice());
-        product.setPromoMediaIndex(request.promoMediaIndex());
         product.setCategory(category);
         product.setSubcategory(subcategory);
         product.setSizes(request.sizes() != null ? request.sizes() : List.of());
@@ -184,7 +191,6 @@ public class ProductService {
                 p.getDescription(),
                 p.getPrice(),
                 p.getOriginalPrice(),
-                p.getPromoMediaIndex(),
                 p.getCategory() != null ? p.getCategory().getSlug() : null,
                 p.getSubcategory() != null ? p.getSubcategory().getSlug() : null,
                 // copy (not pass-through) so the lazy Hibernate collection is
@@ -211,6 +217,7 @@ public class ProductService {
                 m.getType(),
                 m.getContentType(),
                 m.getSizeBytes(),
+                m.getPromoLabel(),
                 m.getUploadedAt()
         );
     }

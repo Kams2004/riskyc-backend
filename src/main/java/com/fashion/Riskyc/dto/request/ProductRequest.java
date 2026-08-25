@@ -17,8 +17,6 @@ public record ProductRequest(
         String description,
         @NotNull @Positive BigDecimal price,
         BigDecimal originalPrice,
-        /** Index into the product's media list (upload order) of the image that should show the promo-price ribbon. */
-        Integer promoMediaIndex,
         @NotBlank String categorySlug,
         String subcategorySlug,
         List<String> sizes,

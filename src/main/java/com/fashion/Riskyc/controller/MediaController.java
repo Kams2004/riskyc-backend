@@ -1,6 +1,7 @@
 package com.fashion.Riskyc.controller;
 
 import com.fashion.Riskyc.dto.response.DownloadUrlResponse;
+import com.fashion.Riskyc.dto.response.MediaResponse;
 import com.fashion.Riskyc.entity.ProductMedia;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
 import com.fashion.Riskyc.repository.ProductMediaRepository;
@@ -18,6 +19,7 @@ import org.springframework.web.servlet.mvc.method.annotation.StreamingResponseBo
 
 import java.time.Duration;
 import java.time.Instant;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -91,6 +93,11 @@ public class MediaController {
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         productService.deleteMedia(id);
         return ResponseEntity.noContent().build();
+    }
+
+    @PatchMapping("/{id}/promo-label")
+    public MediaResponse updatePromoLabel(@PathVariable UUID id, @RequestBody Map<String, String> body) {
+        return productService.updateMediaPromoLabel(id, body.get("text"));
     }
 
     private ProductMedia getOrThrow(UUID id) {

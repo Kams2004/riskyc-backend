@@ -114,14 +114,6 @@ public class ProductService {
         return toMediaResponse(media);
     }
 
-    public MediaResponse updateMediaPromoLabel(UUID mediaId, String text) {
-        ProductMedia media = productMediaRepository.findById(mediaId)
-                .orElseThrow(() -> ResourceNotFoundException.of("Media", mediaId));
-        String trimmed = text == null ? null : text.trim();
-        media.setPromoLabel(trimmed == null || trimmed.isEmpty() ? null : trimmed);
-        return toMediaResponse(media);
-    }
-
     public void deleteMedia(UUID mediaId) {
         ProductMedia media = productMediaRepository.findById(mediaId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Media", mediaId));
@@ -217,7 +209,6 @@ public class ProductService {
                 m.getType(),
                 m.getContentType(),
                 m.getSizeBytes(),
-                m.getPromoLabel(),
                 m.getUploadedAt()
         );
     }

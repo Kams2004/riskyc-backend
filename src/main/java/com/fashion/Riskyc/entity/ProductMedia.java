@@ -36,10 +36,6 @@ public class ProductMedia {
 
     private Long sizeBytes;
 
-    /** Free-text promo caption an admin stamps on this specific image (e.g. "1500frs — 10 for 10,000frs"). */
-    @Column(length = 80)
-    private String promoLabel;
-
     @Enumerated(EnumType.STRING)
     @Column(nullable = false)
     private MediaType type;

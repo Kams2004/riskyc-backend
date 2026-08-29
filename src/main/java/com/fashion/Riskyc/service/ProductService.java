@@ -9,6 +9,7 @@ import com.fashion.Riskyc.entity.*;
 import com.fashion.Riskyc.exception.BadRequestException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
 import com.fashion.Riskyc.repository.CategoryRepository;
+import com.fashion.Riskyc.repository.OrderItemRepository;
 import com.fashion.Riskyc.repository.ProductMediaRepository;
 import com.fashion.Riskyc.repository.ProductRepository;
 import com.fashion.Riskyc.repository.SubcategoryRepository;
@@ -44,6 +45,7 @@ public class ProductService {
     private final ProductMediaRepository productMediaRepository;
     private final CategoryRepository categoryRepository;
     private final SubcategoryRepository subcategoryRepository;
+    private final OrderItemRepository orderItemRepository;
     private final S3MediaService s3MediaService;
 
     @Transactional(readOnly = true)
@@ -89,6 +91,11 @@ public class ProductService {
 
     public void delete(UUID id) {
         Product product = getOrThrow(id);
+        // Past orders keep their own name/price snapshot on each line item, so
+        // detaching (not deleting) them here is enough to satisfy the FK and
+        // still leaves old orders fully readable — just no longer linked to a
+        // live product row.
+        orderItemRepository.detachProduct(id);
         product.getMedia().forEach(m -> s3MediaService.delete(m.getStorageKey()));
         productRepository.delete(product);
     }

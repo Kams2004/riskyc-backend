@@ -80,6 +80,7 @@ public class DataSeeder implements CommandLineRunner {
                 .description("Manages products, orders and categories")
                 .permissions(Set.of(
                         Permission.VIEW_DASHBOARD, Permission.VIEW_ORDERS, Permission.MANAGE_ORDERS,
+                        Permission.VIEW_TREATMENT, Permission.MANAGE_TREATMENT,
                         Permission.VIEW_PRODUCTS, Permission.MANAGE_PRODUCTS,
                         Permission.VIEW_CATEGORIES, Permission.MANAGE_CATEGORIES, Permission.VIEW_CHAT
                 ))

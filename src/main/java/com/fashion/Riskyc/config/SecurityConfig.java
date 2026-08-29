@@ -44,6 +44,7 @@ public class SecurityConfig {
     private static final String P_MANAGE_CATEGORIES = "PERM_MANAGE_CATEGORIES";
     private static final String P_VIEW_ORDERS = "PERM_VIEW_ORDERS";
     private static final String P_MANAGE_ORDERS = "PERM_MANAGE_ORDERS";
+    private static final String P_MANAGE_TREATMENT = "PERM_MANAGE_TREATMENT";
     private static final String P_VIEW_CUSTOMERS = "PERM_VIEW_CUSTOMERS";
     private static final String P_MANAGE_CUSTOMERS = "PERM_MANAGE_CUSTOMERS";
     private static final String P_VIEW_USERS = "PERM_VIEW_USERS";
@@ -112,6 +113,11 @@ public class SecurityConfig {
 
                         // ── Orders (admin desk) ──
                         .requestMatchers(HttpMethod.GET, "/api/orders").hasAuthority(P_VIEW_ORDERS)
+                        // Packaging (Treatment) has its own permission — declared before the
+                        // generic PATCH /api/orders/** rule below, which would otherwise also
+                        // match these and gate them on MANAGE_ORDERS instead.
+                        .requestMatchers(HttpMethod.PATCH, "/api/orders/*/packaging/start", "/api/orders/*/packaging/complete")
+                            .hasAuthority(P_MANAGE_TREATMENT)
                         .requestMatchers(HttpMethod.PATCH, "/api/orders/**").hasAuthority(P_MANAGE_ORDERS)
 
                         // ── Customers (admin management) ──

@@ -98,7 +98,12 @@ public class SecurityConfig {
                         // ── Always public (storefront + checkout + chat) ──
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/{id}").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/categories/**").permitAll()
+                        // GET and HEAD both need to be public here — link-preview crawlers
+                        // (WhatsApp, Facebook, etc.) probe an og:image URL with HEAD before
+                        // fetching it with GET, and a 401 on the HEAD probe makes some of
+                        // them give up before ever issuing the GET.
                         .requestMatchers(HttpMethod.GET, "/api/media/**").permitAll()
+                        .requestMatchers(HttpMethod.HEAD, "/api/media/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/orders").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/orders/*/payment-method", "/api/orders/*/payment-proof").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/orders/{id}", "/api/orders/customer/**").permitAll()

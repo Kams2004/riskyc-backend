@@ -200,33 +200,34 @@ public class OrderService {
     /**
      * Prices one order line, applying the product's bulk/grouped-pricing
      * tiers if it has any (mirrors lib/pricing.ts on the frontend, which
-     * shows the customer this same figure before they ever submit the order):
-     *  - below the smallest reached tier's quantity → regular unit price × qty
-     *  - exactly at a tier's quantity → that tier's flat price
-     *  - above a tier's quantity → that tier's flat price for the first
-     *    {@code tier.quantity} units, plus the remainder at the tier's
-     *    implied per-unit rate (tier.price / tier.quantity)
-     * When multiple tiers are reached, the largest-quantity one is used.
+     * shows the customer this same figure before they ever submit the
+     * order): greedily applies as many of the largest-quantity tier as fit,
+     * then the next-largest for whatever remains, and so on; anything left
+     * over once no tier fits is charged at the regular unit price. E.g. a
+     * 10-for-20,000 tier with a quantity of 12 → one tier (20,000) plus 2
+     * units at the regular unit price — never a partial/prorated tier rate.
      */
     private BigDecimal computeLineTotal(BigDecimal unitPrice, List<BulkPriceTier> bulkPrices, int quantity) {
         if (quantity <= 0) return BigDecimal.ZERO;
 
-        BulkPriceTier applicable = bulkPrices.stream()
-                .filter(t -> t.getQuantity() != null && t.getPrice() != null && t.getQuantity() <= quantity)
-                .max(java.util.Comparator.comparingInt(BulkPriceTier::getQuantity))
-                .orElse(null);
+        List<BulkPriceTier> tiers = bulkPrices.stream()
+                .filter(t -> t.getQuantity() != null && t.getPrice() != null && t.getQuantity() > 0 && t.getPrice().signum() > 0)
+                .sorted(java.util.Comparator.comparingInt(BulkPriceTier::getQuantity).reversed())
+                .toList();
 
-        if (applicable == null) {
-            return unitPrice.multiply(BigDecimal.valueOf(quantity));
+        int remaining = quantity;
+        BigDecimal total = BigDecimal.ZERO;
+        for (BulkPriceTier tier : tiers) {
+            if (remaining >= tier.getQuantity()) {
+                int count = remaining / tier.getQuantity();
+                total = total.add(tier.getPrice().multiply(BigDecimal.valueOf(count)));
+                remaining -= count * tier.getQuantity();
+            }
         }
-        if (quantity == applicable.getQuantity()) {
-            return applicable.getPrice();
+        if (remaining > 0) {
+            total = total.add(unitPrice.multiply(BigDecimal.valueOf(remaining)));
         }
-
-        BigDecimal perUnitBulkRate = applicable.getPrice()
-                .divide(BigDecimal.valueOf(applicable.getQuantity()), 4, java.math.RoundingMode.HALF_UP);
-        int remainder = quantity - applicable.getQuantity();
-        return applicable.getPrice().add(perUnitBulkRate.multiply(BigDecimal.valueOf(remainder)));
+        return total;
     }
 
     private Order getOrThrow(UUID id) {

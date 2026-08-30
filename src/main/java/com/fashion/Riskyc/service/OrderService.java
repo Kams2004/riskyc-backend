@@ -92,8 +92,9 @@ public class OrderService {
             Product product = productRepository.findById(itemReq.productId())
                     .orElseThrow(() -> new BadRequestException("Product not found: " + itemReq.productId()));
 
-            BigDecimal lineTotal = product.getPrice().multiply(BigDecimal.valueOf(itemReq.quantity()));
+            BigDecimal lineTotal = computeLineTotal(product.getPrice(), product.getBulkPrices(), itemReq.quantity());
             subtotal = subtotal.add(lineTotal);
+            BigDecimal effectiveUnitPrice = lineTotal.divide(BigDecimal.valueOf(itemReq.quantity()), 2, java.math.RoundingMode.HALF_UP);
 
             order.getItems().add(OrderItem.builder()
                     .order(order)
@@ -102,7 +103,7 @@ public class OrderService {
                     .quantity(itemReq.quantity())
                     .selectedColor(itemReq.selectedColor())
                     .selectedSize(itemReq.selectedSize())
-                    .unitPrice(product.getPrice())
+                    .unitPrice(effectiveUnitPrice)
                     .build());
         }
 
@@ -193,6 +194,38 @@ public class OrderService {
         OrderResponse response = toResponse(order);
         messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
         return response;
+    }
+
+    /**
+     * Prices one order line, applying the product's bulk/grouped-pricing
+     * tiers if it has any (mirrors lib/pricing.ts on the frontend, which
+     * shows the customer this same figure before they ever submit the order):
+     *  - below the smallest reached tier's quantity → regular unit price × qty
+     *  - exactly at a tier's quantity → that tier's flat price
+     *  - above a tier's quantity → that tier's flat price for the first
+     *    {@code tier.quantity} units, plus the remainder at the tier's
+     *    implied per-unit rate (tier.price / tier.quantity)
+     * When multiple tiers are reached, the largest-quantity one is used.
+     */
+    private BigDecimal computeLineTotal(BigDecimal unitPrice, List<BulkPriceTier> bulkPrices, int quantity) {
+        if (quantity <= 0) return BigDecimal.ZERO;
+
+        BulkPriceTier applicable = bulkPrices.stream()
+                .filter(t -> t.getQuantity() != null && t.getPrice() != null && t.getQuantity() <= quantity)
+                .max(java.util.Comparator.comparingInt(BulkPriceTier::getQuantity))
+                .orElse(null);
+
+        if (applicable == null) {
+            return unitPrice.multiply(BigDecimal.valueOf(quantity));
+        }
+        if (quantity == applicable.getQuantity()) {
+            return applicable.getPrice();
+        }
+
+        BigDecimal perUnitBulkRate = applicable.getPrice()
+                .divide(BigDecimal.valueOf(applicable.getQuantity()), 4, java.math.RoundingMode.HALF_UP);
+        int remainder = quantity - applicable.getQuantity();
+        return applicable.getPrice().add(perUnitBulkRate.multiply(BigDecimal.valueOf(remainder)));
     }
 
     private Order getOrThrow(UUID id) {

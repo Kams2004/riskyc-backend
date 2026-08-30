@@ -103,6 +103,7 @@ public class OrderService {
                     .quantity(itemReq.quantity())
                     .selectedColor(itemReq.selectedColor())
                     .selectedSize(itemReq.selectedSize())
+                    .selectedImageIndex(itemReq.selectedImageIndex())
                     .unitPrice(effectiveUnitPrice)
                     .build());
         }
@@ -286,7 +287,13 @@ public class OrderService {
         String thumbnailUrl = null;
         Product product = item.getProduct();
         if (product != null && !product.getMedia().isEmpty()) {
-            thumbnailUrl = s3MediaService.getPresignedUrl(product.getMedia().get(0).getStorageKey());
+            // Prefer the exact photo the customer picked (via "quantity by photo"); fall back to
+            // the first image for everything else, or if that index no longer exists.
+            Integer idx = item.getSelectedImageIndex();
+            ProductMedia media = (idx != null && idx >= 0 && idx < product.getMedia().size())
+                    ? product.getMedia().get(idx)
+                    : product.getMedia().get(0);
+            thumbnailUrl = s3MediaService.getPresignedUrl(media.getStorageKey());
         }
         return new OrderItemResponse(
                 item.getId(),
@@ -296,6 +303,7 @@ public class OrderService {
                 item.getQuantity(),
                 item.getSelectedColor(),
                 item.getSelectedSize(),
+                item.getSelectedImageIndex(),
                 item.getUnitPrice()
         );
     }

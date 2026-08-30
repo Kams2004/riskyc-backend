@@ -9,6 +9,7 @@ public record OrderItemRequest(
         @NotNull UUID productId,
         @NotNull @Positive Integer quantity,
         String selectedColor,
-        String selectedSize
+        String selectedSize,
+        Integer selectedImageIndex
 ) {
 }

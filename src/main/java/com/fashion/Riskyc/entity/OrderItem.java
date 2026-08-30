@@ -40,6 +40,9 @@ public class OrderItem {
 
     private String selectedSize;
 
+    /** Which of the product's photos (position in its media list at order time) this line was picked against — set only via the "quantity by photo" picker on colorless products. */
+    private Integer selectedImageIndex;
+
     /** Snapshot of the unit price at purchase time — product prices can change later. */
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal unitPrice;

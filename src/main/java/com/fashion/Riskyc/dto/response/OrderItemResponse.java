@@ -12,6 +12,7 @@ public record OrderItemResponse(
         Integer quantity,
         String selectedColor,
         String selectedSize,
+        Integer selectedImageIndex,
         BigDecimal unitPrice
 ) {
 }

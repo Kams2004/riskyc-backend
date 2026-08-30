@@ -36,6 +36,12 @@ public class ChatMessage {
     /** MinIO object key for an attached photo — null for plain-text messages. */
     private String imageStorageKey;
 
+    /** MinIO object key for an attached voice note — null for messages without one. */
+    private String voiceStorageKey;
+
+    /** Recorded length of the voice note, for showing "0:07" without downloading the file first. */
+    private Integer voiceDurationSeconds;
+
     /**
      * Which staff member sent this (only set when {@code sender == ADMIN}
      * and the request carried a valid admin session). The customer-facing

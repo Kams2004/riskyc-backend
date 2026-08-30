@@ -53,7 +53,7 @@ public class OrderController {
 
     @PatchMapping("/{id}/status")
     public OrderResponse updateStatus(@PathVariable UUID id, @Valid @RequestBody UpdateOrderStatusRequest request) {
-        return orderService.updateStatus(id, request.status());
+        return orderService.updateStatus(id, request.status(), request.reason());
     }
 
     @PatchMapping("/{id}/packaging/start")

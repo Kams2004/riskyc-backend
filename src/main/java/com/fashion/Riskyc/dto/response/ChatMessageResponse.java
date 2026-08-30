@@ -11,6 +11,8 @@ public record ChatMessageResponse(
         MessageSender sender,
         String text,
         String imageUrl,
+        String voiceUrl,
+        Integer voiceDurationSeconds,
         /** Staff member who sent this, when sender is ADMIN — never expose this to the customer widget. */
         String adminSenderName,
         Instant timestamp

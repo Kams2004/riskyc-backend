@@ -31,12 +31,21 @@ public class Product {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    /** Optional — an admin can publish a product before deciding a price; defaults to zero ("price on request"). */
     @Column(nullable = false, precision = 12, scale = 2)
-    private BigDecimal price;
+    @Builder.Default
+    private BigDecimal price = BigDecimal.ZERO;
 
     /** Struck-through "was" price used to compute a discount badge. */
     @Column(precision = 12, scale = 2)
     private BigDecimal originalPrice;
+
+    /** Optional "buy N for this total" tiers — unrelated to the regular unit price above. */
+    @ElementCollection
+    @CollectionTable(name = "product_bulk_prices", joinColumns = @JoinColumn(name = "product_id"))
+    @OrderColumn(name = "position")
+    @Builder.Default
+    private List<BulkPriceTier> bulkPrices = new ArrayList<>();
 
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")

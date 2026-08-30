@@ -22,6 +22,7 @@ public record ProductResponse(
         Badge badge,
         boolean hidden,
         List<ProductColorResponse> colors,
+        List<BulkPriceTierResponse> bulkPrices,
         /** Presigned URLs already resolved — zero extra round-trips for the client. */
         List<MediaResponse> media,
         String createdByName,

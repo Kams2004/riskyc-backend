@@ -21,6 +21,7 @@ public record OrderResponse(
         String paymentScreenshotUrl,
         String statusChangedByName,
         Instant statusChangedAt,
+        String rejectionReason,
         String packagingStartedByName,
         Instant packagingStartedAt,
         String packagingCompletedByName,

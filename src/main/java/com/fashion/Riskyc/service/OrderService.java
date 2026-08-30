@@ -41,6 +41,10 @@ public class OrderService {
     private final S3MediaService s3MediaService;
     private final NotificationService notificationService;
     private final SimpMessagingTemplate messagingTemplate;
+    private final PushNotificationService pushNotificationService;
+
+    @Value("${app.site.url}")
+    private String siteUrl;
 
     @Value("${app.payment.orange-money-code}")
     private String orangeMoneyCode;
@@ -130,15 +134,26 @@ public class OrderService {
         return response;
     }
 
-    public OrderResponse updateStatus(UUID orderId, OrderStatus status) {
+    public OrderResponse updateStatus(UUID orderId, OrderStatus status, String reason) {
         Order order = getOrThrow(orderId);
         order.setStatus(status);
         order.setStatusChangedByName(CurrentAdmin.nameOrNull());
         order.setStatusChangedAt(Instant.now());
+        if (status == OrderStatus.CANCELLED) {
+            order.setRejectionReason(reason);
+        }
         OrderResponse response = toResponse(order);
         if (order.getCustomer() != null) {
             notificationService.notifyCustomer(order.getCustomer().getId(), NotificationType.ORDER_STATUS_CHANGED,
                     "Your order status changed to " + status, orderId.toString());
+        }
+        String trackingUrl = siteUrl + "/track/" + orderId;
+        if (status == OrderStatus.VALIDATED) {
+            pushNotificationService.notifyOrder(orderId, "Payment confirmed!",
+                    "Your payment has been validated — tap to track your order.", trackingUrl);
+        } else if (status == OrderStatus.CANCELLED) {
+            pushNotificationService.notifyOrder(orderId, "Order rejected",
+                    "We couldn't validate your payment — tap for details.", trackingUrl);
         }
         messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
         return response;
@@ -224,6 +239,7 @@ public class OrderService {
                 paymentScreenshotUrl,
                 o.getStatusChangedByName(),
                 o.getStatusChangedAt(),
+                o.getRejectionReason(),
                 o.getPackagingStartedByName(),
                 o.getPackagingStartedAt(),
                 o.getPackagingCompletedByName(),

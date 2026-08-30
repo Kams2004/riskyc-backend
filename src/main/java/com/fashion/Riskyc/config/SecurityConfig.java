@@ -102,9 +102,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/orders").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/orders/*/payment-method", "/api/orders/*/payment-proof").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/orders/{id}", "/api/orders/customer/**").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/conversations", "/api/conversations/messages", "/api/conversations/*/messages/image").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/conversations", "/api/conversations/messages", "/api/conversations/*/messages/image", "/api/conversations/*/messages/voice").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/conversations/customer/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/conversations/{id}").permitAll()
+                        .requestMatchers("/api/push/**").permitAll()
 
                         // ── Categories ──
                         .requestMatchers(HttpMethod.POST, "/api/categories/**").hasAuthority(P_MANAGE_CATEGORIES)

@@ -71,6 +71,30 @@
 			<artifactId>s3</artifactId>
 		</dependency>
 
+		<!-- Web Push (RFC 8030/8292) — sends browser push notifications; several of its own
+		     dependencies are marked optional/runtime-only in its POM but are needed at compile
+		     time here, so they're pulled in explicitly. -->
+		<dependency>
+			<groupId>nl.martijndwars</groupId>
+			<artifactId>web-push</artifactId>
+			<version>5.1.2</version>
+		</dependency>
+		<dependency>
+			<groupId>org.bouncycastle</groupId>
+			<artifactId>bcprov-jdk18on</artifactId>
+			<version>1.85.2</version>
+		</dependency>
+		<dependency>
+			<groupId>org.apache.httpcomponents</groupId>
+			<artifactId>httpcore</artifactId>
+			<version>4.4.16</version>
+		</dependency>
+		<dependency>
+			<groupId>org.bitbucket.b_c</groupId>
+			<artifactId>jose4j</artifactId>
+			<version>0.7.9</version>
+		</dependency>
+
 		<!-- JWT issuing/validation for admin authentication -->
 		<dependency>
 			<groupId>io.jsonwebtoken</groupId>

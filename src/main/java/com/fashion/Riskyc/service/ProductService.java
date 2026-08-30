@@ -2,6 +2,7 @@ package com.fashion.Riskyc.service;
 
 import com.fashion.Riskyc.dto.request.ProductColorRequest;
 import com.fashion.Riskyc.dto.request.ProductRequest;
+import com.fashion.Riskyc.dto.response.BulkPriceTierResponse;
 import com.fashion.Riskyc.dto.response.MediaResponse;
 import com.fashion.Riskyc.dto.response.ProductColorResponse;
 import com.fashion.Riskyc.dto.response.ProductResponse;
@@ -142,7 +143,7 @@ public class ProductService {
 
         product.setName(request.name());
         product.setDescription(request.description());
-        product.setPrice(request.price());
+        product.setPrice(request.price() != null ? request.price() : java.math.BigDecimal.ZERO);
         product.setOriginalPrice(request.originalPrice());
         product.setCategory(category);
         product.setSubcategory(subcategory);
@@ -160,13 +161,23 @@ public class ProductService {
         }
 
         product.getColors().clear();
-        for (ProductColorRequest colorReq : request.colors()) {
-            product.getColors().add(ProductColor.builder()
-                    .name(colorReq.name())
-                    .hex(colorReq.hex())
-                    .stock(colorReq.stock())
-                    .product(product)
-                    .build());
+        if (request.colors() != null) {
+            for (ProductColorRequest colorReq : request.colors()) {
+                product.getColors().add(ProductColor.builder()
+                        .name(colorReq.name())
+                        .hex(colorReq.hex())
+                        .stock(colorReq.stock())
+                        .product(product)
+                        .build());
+            }
+        }
+
+        product.getBulkPrices().clear();
+        if (request.bulkPrices() != null) {
+            request.bulkPrices().stream()
+                    .sorted(java.util.Comparator.comparingInt(com.fashion.Riskyc.dto.request.BulkPriceTierRequest::quantity))
+                    .forEach(tierReq -> product.getBulkPrices().add(
+                            new BulkPriceTier(tierReq.quantity(), tierReq.price())));
         }
     }
 
@@ -181,6 +192,9 @@ public class ProductService {
     private ProductResponse toResponse(Product p) {
         List<ProductColorResponse> colors = p.getColors().stream()
                 .map(c -> new ProductColorResponse(c.getId(), c.getName(), c.getHex(), c.getStock()))
+                .toList();
+        List<BulkPriceTierResponse> bulkPrices = p.getBulkPrices().stream()
+                .map(t -> new BulkPriceTierResponse(t.getQuantity(), t.getPrice()))
                 .toList();
         List<MediaResponse> media = p.getMedia().stream().map(this::toMediaResponse).toList();
 
@@ -202,6 +216,7 @@ public class ProductService {
                 p.getBadge(),
                 p.isHidden(),
                 colors,
+                bulkPrices,
                 media,
                 p.getCreatedByName(),
                 p.getCreatedAt(),

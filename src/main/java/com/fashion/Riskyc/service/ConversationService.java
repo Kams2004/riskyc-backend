@@ -41,6 +41,7 @@ public class ConversationService {
     private final S3MediaService s3MediaService;
 
     private static final String CHAT_IMAGE_FOLDER = "chat";
+    private static final String CHAT_VOICE_FOLDER = "chat-voice";
 
     @Transactional(readOnly = true)
     public List<ConversationResponse> listAll() {
@@ -145,6 +146,39 @@ public class ConversationService {
         return response;
     }
 
+    public ChatMessageResponse sendVoiceMessage(UUID conversationId, MessageSender sender, Integer durationSeconds, MultipartFile file) {
+        Conversation conversation = getOrThrow(conversationId);
+        String key = s3MediaService.upload(file, CHAT_VOICE_FOLDER + "/" + conversationId);
+
+        ChatMessage message = ChatMessage.builder()
+                .conversation(conversation)
+                .sender(sender)
+                .text("")
+                .voiceStorageKey(key)
+                .voiceDurationSeconds(durationSeconds)
+                .adminSenderName(sender == MessageSender.ADMIN ? CurrentAdmin.nameOrNull() : null)
+                .build();
+        message = chatMessageRepository.saveAndFlush(message);
+        conversation.getMessages().add(message);
+        conversation.setLastMessageAt(Instant.now());
+        if (sender == MessageSender.CUSTOMER) {
+            conversation.setUnread(conversation.getUnread() + 1);
+        }
+
+        ChatMessageResponse response = toResponse(message);
+        messagingTemplate.convertAndSend("/topic/conversations/" + conversation.getId(), response);
+
+        if (sender == MessageSender.CUSTOMER) {
+            notificationService.notifyAdmin(NotificationType.NEW_MESSAGE,
+                    conversation.getCustomerName() + " sent a voice message", conversation.getId().toString());
+        } else if (conversation.getCustomer() != null) {
+            notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
+                    "You have a new message from support", conversation.getId().toString());
+        }
+
+        return response;
+    }
+
     public void markRead(UUID conversationId) {
         Conversation conversation = getOrThrow(conversationId);
         conversation.setUnread(0);
@@ -152,10 +186,10 @@ public class ConversationService {
 
     public void delete(UUID conversationId) {
         Conversation conversation = getOrThrow(conversationId);
-        conversation.getMessages().stream()
-                .map(ChatMessage::getImageStorageKey)
-                .filter(java.util.Objects::nonNull)
-                .forEach(s3MediaService::delete);
+        conversation.getMessages().forEach(m -> {
+            if (m.getImageStorageKey() != null) s3MediaService.delete(m.getImageStorageKey());
+            if (m.getVoiceStorageKey() != null) s3MediaService.delete(m.getVoiceStorageKey());
+        });
         conversationRepository.delete(conversation);
     }
 
@@ -179,6 +213,7 @@ public class ConversationService {
 
     private ChatMessageResponse toResponse(ChatMessage m) {
         String imageUrl = m.getImageStorageKey() != null ? s3MediaService.getPresignedUrl(m.getImageStorageKey()) : null;
-        return new ChatMessageResponse(m.getId(), m.getConversation().getId(), m.getSender(), m.getText(), imageUrl, m.getAdminSenderName(), m.getTimestamp());
+        String voiceUrl = m.getVoiceStorageKey() != null ? s3MediaService.getPresignedUrl(m.getVoiceStorageKey()) : null;
+        return new ChatMessageResponse(m.getId(), m.getConversation().getId(), m.getSender(), m.getText(), imageUrl, voiceUrl, m.getVoiceDurationSeconds(), m.getAdminSenderName(), m.getTimestamp());
     }
 }

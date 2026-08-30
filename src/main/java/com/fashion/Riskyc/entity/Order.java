@@ -60,6 +60,10 @@ public class Order {
     private String statusChangedByName;
     private Instant statusChangedAt;
 
+    /** Set when an admin cancels/rejects the order — shown to the customer on the tracking page. */
+    @Column(columnDefinition = "TEXT")
+    private String rejectionReason;
+
     private String packagingStartedByName;
     private Instant packagingStartedAt;
     private String packagingCompletedByName;

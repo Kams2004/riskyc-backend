@@ -66,6 +66,17 @@ public class ConversationController {
         return conversationService.sendImageMessage(id, sender, text, file);
     }
 
+    /** Sends a message with an attached voice note — same multipart approach as the photo endpoint. */
+    @PostMapping("/{id}/messages/voice")
+    public ChatMessageResponse sendVoiceMessage(
+            @PathVariable UUID id,
+            @RequestParam("sender") MessageSender sender,
+            @RequestParam(value = "durationSeconds", required = false) Integer durationSeconds,
+            @RequestParam("file") MultipartFile file
+    ) {
+        return conversationService.sendVoiceMessage(id, sender, durationSeconds, file);
+    }
+
     @PostMapping("/{id}/read")
     public ResponseEntity<Void> markRead(@PathVariable UUID id) {
         conversationService.markRead(id);

@@ -31,6 +31,13 @@ public class Product {
     @Column(columnDefinition = "TEXT")
     private String description;
 
+    /** Machine-translated French version of {@link #name}, regenerated whenever name changes — see TranslationService. Null until a translation call has succeeded at least once. */
+    private String nameFr;
+
+    /** Machine-translated French version of {@link #description}. */
+    @Column(columnDefinition = "TEXT")
+    private String descriptionFr;
+
     /** Optional — an admin can publish a product before deciding a price; defaults to zero ("price on request"). */
     @Column(nullable = false, precision = 12, scale = 2)
     @Builder.Default

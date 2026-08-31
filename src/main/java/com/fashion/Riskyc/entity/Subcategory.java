@@ -25,6 +25,9 @@ public class Subcategory {
     @Column(nullable = false)
     private String name;
 
+    /** Machine-translated French version of {@link #name} — see TranslationService. */
+    private String nameFr;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id", nullable = false)
     @JsonIgnore

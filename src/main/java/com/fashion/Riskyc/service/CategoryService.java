@@ -32,6 +32,7 @@ public class CategoryService {
     private final SubcategoryRepository subcategoryRepository;
     private final ProductRepository productRepository;
     private final S3MediaService s3MediaService;
+    private final TranslationService translationService;
 
     @Transactional(readOnly = true)
     public List<CategoryResponse> listAll() {
@@ -48,6 +49,7 @@ public class CategoryService {
         Category saved = categoryRepository.save(Category.builder()
                 .slug(request.slug())
                 .name(request.name())
+                .nameFr(translationService.translateToFrench(request.name()))
                 .icon(request.icon())
                 .createdByName(CurrentAdmin.nameOrNull())
                 .build());
@@ -59,9 +61,13 @@ public class CategoryService {
         if (categoryRepository.existsByNameIgnoreCaseAndIdNot(request.name(), id)) {
             throw new BadRequestException("A category named '" + request.name() + "' already exists");
         }
+        String previousName = category.getName();
         category.setSlug(request.slug());
         category.setName(request.name());
         category.setIcon(request.icon());
+        if (!java.util.Objects.equals(previousName, request.name())) {
+            category.setNameFr(translationService.translateToFrench(request.name()));
+        }
         return toResponse(category);
     }
 
@@ -101,6 +107,7 @@ public class CategoryService {
         Subcategory sub = Subcategory.builder()
                 .slug(request.slug())
                 .name(request.name())
+                .nameFr(translationService.translateToFrench(request.name()))
                 .category(category)
                 .build();
         category.getSubcategories().add(sub);
@@ -111,8 +118,12 @@ public class CategoryService {
     public SubcategoryResponse updateSubcategory(UUID subcategoryId, SubcategoryRequest request) {
         Subcategory sub = subcategoryRepository.findById(subcategoryId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Subcategory", subcategoryId));
+        String previousName = sub.getName();
         sub.setSlug(request.slug());
         sub.setName(request.name());
+        if (!java.util.Objects.equals(previousName, request.name())) {
+            sub.setNameFr(translationService.translateToFrench(request.name()));
+        }
         return toResponse(sub);
     }
 
@@ -135,13 +146,13 @@ public class CategoryService {
                 ? s3MediaService.getPresignedUrl(c.getImageStorageKey())
                 : null;
         return new CategoryResponse(
-                c.getId(), c.getSlug(), c.getName(), c.getIcon(), imageUrl, c.getCreatedByName(),
+                c.getId(), c.getSlug(), c.getName(), c.getNameFr(), c.getIcon(), imageUrl, c.getCreatedByName(),
                 c.getSubcategories().stream().map(this::toResponse).toList(),
                 productRepository.countByCategoryIdAndHiddenFalse(c.getId())
         );
     }
 
     private SubcategoryResponse toResponse(Subcategory s) {
-        return new SubcategoryResponse(s.getId(), s.getSlug(), s.getName());
+        return new SubcategoryResponse(s.getId(), s.getSlug(), s.getName(), s.getNameFr());
     }
 }

@@ -26,6 +26,9 @@ public class Category {
     @Column(nullable = false)
     private String name;
 
+    /** Machine-translated French version of {@link #name} — see TranslationService. */
+    private String nameFr;
+
     /** Emoji or icon token shown next to the category in the storefront nav. */
     private String icon;
 

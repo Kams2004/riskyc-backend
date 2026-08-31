@@ -11,6 +11,9 @@ public record ProductResponse(
         UUID id,
         String name,
         String description,
+        /** Machine-translated French versions — null until a translation has succeeded; the frontend falls back to name/description when absent. */
+        String nameFr,
+        String descriptionFr,
         BigDecimal price,
         BigDecimal originalPrice,
         String categorySlug,

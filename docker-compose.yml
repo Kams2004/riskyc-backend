@@ -73,6 +73,8 @@ services:
       JWT_SECRET: ${JWT_SECRET:-cmlza3ljLWZhc2hpb24tZGV2LW9ubHktand0LXNpZ25pbmcta2V5LWNoYW5nZS1pbi1wcm9k}
       # Same value as NEXT_PUBLIC_GOOGLE_CLIENT_ID in the frontend repo's .env.
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      # Google Cloud Translation API key — backend-only, never sent to the browser.
+      GOOGLE_TRANSLATE_API_KEY: ${GOOGLE_TRANSLATE_API_KEY:-}
     ports:
       - "${BACKEND_PORT:-8082}:8080"
     networks:

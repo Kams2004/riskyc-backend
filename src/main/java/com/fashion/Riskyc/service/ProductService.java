@@ -48,6 +48,7 @@ public class ProductService {
     private final SubcategoryRepository subcategoryRepository;
     private final OrderItemRepository orderItemRepository;
     private final S3MediaService s3MediaService;
+    private final TranslationService translationService;
 
     @Transactional(readOnly = true)
     public Page<ProductResponse> list(Pageable pageable, String categorySlug, String subcategorySlug, String search) {
@@ -141,8 +142,19 @@ public class ProductService {
                             "Unknown subcategory '" + request.subcategorySlug() + "' for category '" + request.categorySlug() + "'"));
         }
 
+        String previousName = product.getName();
+        String previousDescription = product.getDescription();
         product.setName(request.name());
         product.setDescription(request.description());
+        // Only re-translate when the source text actually changed — an
+        // admin re-saving the same product otherwise costs a Translate API
+        // call for nothing.
+        if (!java.util.Objects.equals(previousName, request.name())) {
+            product.setNameFr(translationService.translateToFrench(request.name()));
+        }
+        if (!java.util.Objects.equals(previousDescription, request.description())) {
+            product.setDescriptionFr(translationService.translateToFrench(request.description()));
+        }
         product.setPrice(request.price() != null ? request.price() : java.math.BigDecimal.ZERO);
         product.setOriginalPrice(request.originalPrice());
         product.setCategory(category);
@@ -202,6 +214,8 @@ public class ProductService {
                 p.getId(),
                 p.getName(),
                 p.getDescription(),
+                p.getNameFr(),
+                p.getDescriptionFr(),
                 p.getPrice(),
                 p.getOriginalPrice(),
                 p.getCategory() != null ? p.getCategory().getSlug() : null,

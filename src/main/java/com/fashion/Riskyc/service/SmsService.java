@@ -6,6 +6,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
+import java.net.URI;
 import java.time.Instant;
 import java.util.Base64;
 import java.util.Map;
@@ -18,16 +19,19 @@ import java.nio.charset.StandardCharsets;
  * does nothing when unconfigured (no client id/secret/sender), so the app
  * works identically before and after credentials are added.
  *
- * API contract (Orange Developer — SMS Cameroon 2.0):
- *   token:  POST https://api.orange.com/oauth/v3/token   (client_credentials, Basic auth)
- *   send:   POST https://api.orange.com/smsmessaging/v1/outbound/tel:+{senderNumber}/requests
+ * API contract (Orange Developer — SMS Cameroon 2.0), confirmed against the
+ * account-specific code sample in the Orange Developer console:
+ *   token: POST https://api.orange.com/oauth/v3/token   (client_credentials, Basic auth)
+ *   send:  POST https://api.orange.com/smsmessaging/v1/outbound/tel%3A%2B{senderNumber}/requests
+ * The "tel:+{senderNumber}" segment must be percent-encoded in the URL path
+ * itself (colon and plus aren't legal unescaped there) — built as a raw
+ * java.net.URI below so Spring doesn't re-encode (or double-encode) it.
  */
 @Service
 @Slf4j
 public class SmsService {
 
     private static final String TOKEN_URL = "https://api.orange.com/oauth/v3/token";
-    private static final String SEND_URL_TEMPLATE = "https://api.orange.com/smsmessaging/v1/outbound/tel:+{sender}/requests";
 
     private final RestClient restClient = RestClient.create();
 
@@ -37,7 +41,13 @@ public class SmsService {
     @Value("${app.orange.sms.client-secret:}")
     private String clientSecret;
 
-    /** The Orange-assigned sender number for this subscription (digits only, no '+', e.g. 237XXXXXXXXX) — found in the API subscription's Configure section, not the same as your own phone number. */
+    /**
+     * The Orange-assigned sender address for this subscription (digits only,
+     * no '+', e.g. "2370000") — NOT your own phone number, and NOT the
+     * numeric "SMS <n>" default sender *name* shown under Authorized
+     * senders. Read it off the "senderAddress": "tel:+<this>" field in the
+     * account-specific code sample under Configure > Get sample code.
+     */
     @Value("${app.orange.sms.sender-number:}")
     private String senderNumber;
 
@@ -59,17 +69,21 @@ public class SmsService {
             String token = getAccessToken();
             String to = normalizePhone(toPhoneNumber);
 
-            Map<String, Object> payload = Map.of(
-                    "outboundSMSMessageRequest", Map.of(
-                            "address", "tel:" + to,
-                            "senderAddress", "tel:+" + senderNumber,
-                            "senderName", senderName,
-                            "outboundSMSTextMessage", Map.of("message", message)
-                    )
-            );
+            // senderName is optional on Orange's side (falls back to the
+            // account's default numeric sender) — omitted entirely rather
+            // than sent as an empty string when no custom name is approved yet.
+            Map<String, Object> request = new java.util.LinkedHashMap<>();
+            request.put("address", "tel:" + to);
+            request.put("senderAddress", "tel:+" + senderNumber);
+            if (senderName != null && !senderName.isBlank()) {
+                request.put("senderName", senderName);
+            }
+            request.put("outboundSMSTextMessage", Map.of("message", message));
+            Map<String, Object> payload = Map.of("outboundSMSMessageRequest", request);
 
+            URI sendUri = URI.create("https://api.orange.com/smsmessaging/v1/outbound/tel%3A%2B" + senderNumber + "/requests");
             restClient.post()
-                    .uri(SEND_URL_TEMPLATE, senderNumber)
+                    .uri(sendUri)
                     .header("Authorization", "Bearer " + token)
                     .body(payload)
                     .retrieve()

@@ -80,6 +80,10 @@ services:
       ORANGE_SMS_CLIENT_SECRET: ${ORANGE_SMS_CLIENT_SECRET:-}
       ORANGE_SMS_SENDER_NUMBER: ${ORANGE_SMS_SENDER_NUMBER:-}
       ORANGE_SMS_SENDER_NAME: ${ORANGE_SMS_SENDER_NAME:-}
+      # Twilio SMS — preferred over Orange when both are set. See .env.example.
+      TWILIO_ACCOUNT_SID: ${TWILIO_ACCOUNT_SID:-}
+      TWILIO_AUTH_TOKEN: ${TWILIO_AUTH_TOKEN:-}
+      TWILIO_FROM: ${TWILIO_FROM:-}
     ports:
       - "${BACKEND_PORT:-8082}:8080"
     networks:

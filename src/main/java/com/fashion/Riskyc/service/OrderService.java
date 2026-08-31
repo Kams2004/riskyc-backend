@@ -43,6 +43,16 @@ public class OrderService {
     private final SimpMessagingTemplate messagingTemplate;
     private final PushNotificationService pushNotificationService;
     private final SmsService smsService;
+    private final TwilioSmsService twilioSmsService;
+
+    /** Twilio is preferred over Orange when both happen to be configured — never both, so having a second provider set up doesn't double the SMS cost of an order. */
+    private void sendCustomerSms(String phone, String message) {
+        if (twilioSmsService.isConfigured()) {
+            twilioSmsService.send(phone, message);
+        } else {
+            smsService.send(phone, message);
+        }
+    }
 
     @Value("${app.site.url}")
     private String siteUrl;
@@ -148,7 +158,7 @@ public class OrderService {
         // checkout (payment method chosen + proof uploaded), so this is the
         // real "we've got your order" moment, not raw order creation.
         String customerPhone = order.getCustomerInfo() != null ? order.getCustomerInfo().getPhone() : null;
-        smsService.send(customerPhone, "Riskyc Fashion: your order " + orderId + " was correctly received at Riskyc Fashion store. "
+        sendCustomerSms(customerPhone, "Riskyc Fashion: your order " + orderId + " was correctly received at Riskyc Fashion store. "
                 + "We are currently reviewing your payment screenshot and you will receive a notification when it is validated. "
                 + "Track your order: " + siteUrl + "/track/" + orderId);
 
@@ -175,7 +185,7 @@ public class OrderService {
                     "Your payment has been validated — tap to track your order.", trackingUrl);
             // 2 of 3 order-lifecycle SMS — sent alongside push, not instead
             // of it, since it reaches the customer even without push enabled.
-            smsService.send(customerPhone, "Riskyc Fashion: your order " + orderId + " has been validated! "
+            sendCustomerSms(customerPhone, "Riskyc Fashion: your order " + orderId + " has been validated! "
                     + "Track your order: " + trackingUrl);
         } else if (status == OrderStatus.CANCELLED) {
             pushNotificationService.notifyOrder(orderId, "Order rejected",
@@ -221,7 +231,7 @@ public class OrderService {
 
         // 3 of 3 order-lifecycle SMS.
         String customerPhone = order.getCustomerInfo() != null ? order.getCustomerInfo().getPhone() : null;
-        smsService.send(customerPhone, "Riskyc Fashion: your order " + orderId + " has been packaged and is ready! "
+        sendCustomerSms(customerPhone, "Riskyc Fashion: your order " + orderId + " has been packaged and is ready! "
                 + "Track your order: " + siteUrl + "/track/" + orderId);
 
         return response;

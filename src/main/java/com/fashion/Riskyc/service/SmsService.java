@@ -60,7 +60,7 @@ public class SmsService {
     private volatile String cachedToken;
     private volatile Instant cachedTokenExpiresAt;
 
-    private boolean isConfigured() {
+    public boolean isConfigured() {
         return !clientId.isBlank() && !clientSecret.isBlank() && !senderNumber.isBlank();
     }
 

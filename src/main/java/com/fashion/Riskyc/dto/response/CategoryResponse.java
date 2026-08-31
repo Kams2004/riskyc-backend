@@ -10,6 +10,7 @@ public record CategoryResponse(
         String icon,
         String imageUrl,
         String createdByName,
-        List<SubcategoryResponse> subcategories
+        List<SubcategoryResponse> subcategories,
+        long productCount
 ) {
 }

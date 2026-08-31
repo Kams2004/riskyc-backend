@@ -17,6 +17,7 @@ public record OrderResponse(
         CustomerInfoResponse customerInfo,
         PaymentMethod paymentMethod,
         String paymentCode,
+        String paymentAccountName,
         /** Presigned URL for the uploaded payment proof, if any — resolved server-side. */
         String paymentScreenshotUrl,
         String statusChangedByName,

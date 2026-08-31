@@ -82,7 +82,14 @@ public class SecurityConfig {
                         // ── Always public ──
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/admin-users/login").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/customers/register", "/api/customers/login").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/customers/register", "/api/customers/login", "/api/customers/google").permitAll()
+                        // Customer self-service — there's no customer session/JWT scheme (see
+                        // class javadoc), so these are identified by path id like the rest of
+                        // the customer-facing API. Declared before the generic admin-only
+                        // GET/PATCH /api/customers/** rules below, which would otherwise also
+                        // match these and gate them behind an admin permission by accident.
+                        .requestMatchers(HttpMethod.GET, "/api/customers/*/referrals").permitAll()
+                        .requestMatchers(HttpMethod.PATCH, "/api/customers/*/acronym").permitAll()
 
                         // NOTE: these more specific admin-only rules MUST be declared before
                         // the generic public GET rules below — Spring Security uses

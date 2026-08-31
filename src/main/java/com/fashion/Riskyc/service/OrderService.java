@@ -49,8 +49,14 @@ public class OrderService {
     @Value("${app.payment.orange-money-code}")
     private String orangeMoneyCode;
 
+    @Value("${app.payment.orange-money-name}")
+    private String orangeMoneyName;
+
     @Value("${app.payment.mobile-money-code}")
     private String mobileMoneyCode;
+
+    @Value("${app.payment.mobile-money-name}")
+    private String mobileMoneyName;
 
     @Value("${app.payment.free-delivery-threshold}")
     private BigDecimal freeDeliveryThreshold;
@@ -120,7 +126,10 @@ public class OrderService {
     public OrderResponse setPaymentMethod(UUID orderId, PaymentMethod method) {
         Order order = getOrThrow(orderId);
         order.setPaymentMethod(method);
-        order.setPaymentCode(method == PaymentMethod.ORANGE_MONEY ? orangeMoneyCode : mobileMoneyCode);
+        String template = method == PaymentMethod.ORANGE_MONEY ? orangeMoneyCode : mobileMoneyCode;
+        String amount = order.getTotal().setScale(0, java.math.RoundingMode.DOWN).toPlainString();
+        order.setPaymentCode(String.format(template, amount));
+        order.setPaymentAccountName(method == PaymentMethod.ORANGE_MONEY ? orangeMoneyName : mobileMoneyName);
         order.setStatus(OrderStatus.AWAITING_PAYMENT);
         return toResponse(order);
     }
@@ -271,6 +280,7 @@ public class OrderService {
                 toResponse(o.getCustomerInfo()),
                 o.getPaymentMethod(),
                 o.getPaymentCode(),
+                o.getPaymentAccountName(),
                 paymentScreenshotUrl,
                 o.getStatusChangedByName(),
                 o.getStatusChangedAt(),

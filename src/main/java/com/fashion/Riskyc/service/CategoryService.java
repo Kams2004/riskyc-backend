@@ -136,7 +136,8 @@ public class CategoryService {
                 : null;
         return new CategoryResponse(
                 c.getId(), c.getSlug(), c.getName(), c.getIcon(), imageUrl, c.getCreatedByName(),
-                c.getSubcategories().stream().map(this::toResponse).toList()
+                c.getSubcategories().stream().map(this::toResponse).toList(),
+                productRepository.countByCategoryIdAndHiddenFalse(c.getId())
         );
     }
 

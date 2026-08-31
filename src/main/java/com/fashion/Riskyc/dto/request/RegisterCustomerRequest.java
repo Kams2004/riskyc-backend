@@ -9,6 +9,8 @@ public record RegisterCustomerRequest(
         @NotBlank String lastName,
         @NotBlank @Email String email,
         String phone,
-        @NotBlank @Size(min = 6, message = "Password must be at least 6 characters") String password
+        @NotBlank @Size(min = 6, message = "Password must be at least 6 characters") String password,
+        /** Optional — another customer's referral code, entered by hand or prefilled from a shared link. */
+        String referralCode
 ) {
 }

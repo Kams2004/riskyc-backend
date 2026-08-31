@@ -13,6 +13,10 @@ public record CustomerResponse(
         String phone,
         CustomerStatus status,
         Instant createdAt,
-        Instant lastLogin
+        Instant lastLogin,
+        String referralCode,
+        String acronym,
+        /** Acronym of whoever referred this customer in, if anyone. */
+        String referredByAcronym
 ) {
 }

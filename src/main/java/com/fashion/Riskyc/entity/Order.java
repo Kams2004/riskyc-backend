@@ -51,6 +51,9 @@ public class Order {
 
     private String paymentCode;
 
+    /** Account-holder name shown alongside the code above (e.g. "KHAN RAPHEAL"). */
+    private String paymentAccountName;
+
     /** MinIO object key of the payment proof screenshot the customer uploaded, if any. */
     private String paymentScreenshotKey;
 

@@ -143,6 +143,15 @@ public class OrderService {
         OrderResponse response = toResponse(order);
         notificationService.notifyAdmin(NotificationType.PAYMENT_PROOF_UPLOADED,
                 "Payment proof uploaded for order " + orderId, orderId.toString());
+
+        // 1 of 3 order-lifecycle SMS — the customer has now fully completed
+        // checkout (payment method chosen + proof uploaded), so this is the
+        // real "we've got your order" moment, not raw order creation.
+        String customerPhone = order.getCustomerInfo() != null ? order.getCustomerInfo().getPhone() : null;
+        smsService.send(customerPhone, "Riskyc Fashion: your order " + orderId + " was correctly received at Riskyc Fashion store. "
+                + "We are currently reviewing your payment screenshot and you will receive a notification when it is validated. "
+                + "Track your order: " + siteUrl + "/track/" + orderId);
+
         return response;
     }
 
@@ -164,13 +173,13 @@ public class OrderService {
         if (status == OrderStatus.VALIDATED) {
             pushNotificationService.notifyOrder(orderId, "Payment confirmed!",
                     "Your payment has been validated — tap to track your order.", trackingUrl);
-            // SMS is sent alongside push, not instead of it — it reaches the
-            // customer even if they never enabled browser notifications.
-            smsService.send(customerPhone, "Riskyc Fashion: your payment is confirmed! Track your order: " + trackingUrl);
+            // 2 of 3 order-lifecycle SMS — sent alongside push, not instead
+            // of it, since it reaches the customer even without push enabled.
+            smsService.send(customerPhone, "Riskyc Fashion: your order " + orderId + " has been validated! "
+                    + "Track your order: " + trackingUrl);
         } else if (status == OrderStatus.CANCELLED) {
             pushNotificationService.notifyOrder(orderId, "Order rejected",
                     "We couldn't validate your payment — tap for details.", trackingUrl);
-            smsService.send(customerPhone, "Riskyc Fashion: we couldn't validate your payment. Details: " + trackingUrl);
         }
         messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
         return response;
@@ -209,6 +218,12 @@ public class OrderService {
         order.setPackagingCompletedAt(Instant.now());
         OrderResponse response = toResponse(order);
         messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
+
+        // 3 of 3 order-lifecycle SMS.
+        String customerPhone = order.getCustomerInfo() != null ? order.getCustomerInfo().getPhone() : null;
+        smsService.send(customerPhone, "Riskyc Fashion: your order " + orderId + " has been packaged and is ready! "
+                + "Track your order: " + siteUrl + "/track/" + orderId);
+
         return response;
     }
 

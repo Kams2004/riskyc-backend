@@ -75,6 +75,11 @@ services:
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
       # Google Cloud Translation API key — backend-only, never sent to the browser.
       GOOGLE_TRANSLATE_API_KEY: ${GOOGLE_TRANSLATE_API_KEY:-}
+      # Orange SMS Cameroon — see .env.example for where each value comes from.
+      ORANGE_SMS_CLIENT_ID: ${ORANGE_SMS_CLIENT_ID:-}
+      ORANGE_SMS_CLIENT_SECRET: ${ORANGE_SMS_CLIENT_SECRET:-}
+      ORANGE_SMS_SENDER_NUMBER: ${ORANGE_SMS_SENDER_NUMBER:-}
+      ORANGE_SMS_SENDER_NAME: ${ORANGE_SMS_SENDER_NAME:-}
     ports:
       - "${BACKEND_PORT:-8082}:8080"
     networks:

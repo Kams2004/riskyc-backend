@@ -42,6 +42,7 @@ public class OrderService {
     private final NotificationService notificationService;
     private final SimpMessagingTemplate messagingTemplate;
     private final PushNotificationService pushNotificationService;
+    private final SmsService smsService;
 
     @Value("${app.site.url}")
     private String siteUrl;
@@ -159,12 +160,17 @@ public class OrderService {
                     "Your order status changed to " + status, orderId.toString());
         }
         String trackingUrl = siteUrl + "/track/" + orderId;
+        String customerPhone = order.getCustomerInfo() != null ? order.getCustomerInfo().getPhone() : null;
         if (status == OrderStatus.VALIDATED) {
             pushNotificationService.notifyOrder(orderId, "Payment confirmed!",
                     "Your payment has been validated — tap to track your order.", trackingUrl);
+            // SMS is sent alongside push, not instead of it — it reaches the
+            // customer even if they never enabled browser notifications.
+            smsService.send(customerPhone, "Riskyc Fashion: your payment is confirmed! Track your order: " + trackingUrl);
         } else if (status == OrderStatus.CANCELLED) {
             pushNotificationService.notifyOrder(orderId, "Order rejected",
                     "We couldn't validate your payment — tap for details.", trackingUrl);
+            smsService.send(customerPhone, "Riskyc Fashion: we couldn't validate your payment. Details: " + trackingUrl);
         }
         messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
         return response;

@@ -50,4 +50,12 @@ public class Conversation {
     private Instant createdAt;
 
     private Instant lastMessageAt;
+
+    /**
+     * When each side last opened/viewed this thread — read-receipt ticks are
+     * derived from these rather than stored per-message: a message is "read"
+     * once the other side's read timestamp is at or after it.
+     */
+    private Instant customerReadAt;
+    private Instant adminReadAt;
 }

@@ -83,6 +83,13 @@ public class ConversationController {
         return ResponseEntity.noContent().build();
     }
 
+    /** Customer-side equivalent — called when the customer opens/views the chat widget, so admins see their sent messages tick as read. */
+    @PostMapping("/{id}/read-by-customer")
+    public ResponseEntity<Void> markReadByCustomer(@PathVariable UUID id) {
+        conversationService.markReadByCustomer(id);
+        return ResponseEntity.noContent().build();
+    }
+
     @DeleteMapping("/{id}")
     public ResponseEntity<Void> delete(@PathVariable UUID id) {
         conversationService.delete(id);

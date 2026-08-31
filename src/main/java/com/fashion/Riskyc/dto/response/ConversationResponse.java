@@ -12,6 +12,8 @@ public record ConversationResponse(
         List<ChatMessageResponse> messages,
         int unread,
         Instant createdAt,
-        Instant lastMessageAt
+        Instant lastMessageAt,
+        Instant customerReadAt,
+        Instant adminReadAt
 ) {
 }

@@ -3,6 +3,7 @@ package com.fashion.Riskyc.service;
 import com.fashion.Riskyc.dto.request.CreateConversationRequest;
 import com.fashion.Riskyc.dto.request.SendMessageRequest;
 import com.fashion.Riskyc.dto.response.ChatMessageResponse;
+import com.fashion.Riskyc.dto.response.ConversationReadStatusResponse;
 import com.fashion.Riskyc.dto.response.ConversationResponse;
 import com.fashion.Riskyc.entity.*;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
@@ -182,6 +183,22 @@ public class ConversationService {
     public void markRead(UUID conversationId) {
         Conversation conversation = getOrThrow(conversationId);
         conversation.setUnread(0);
+        conversation.setAdminReadAt(Instant.now());
+        broadcastReadStatus(conversation);
+    }
+
+    /** Customer-side equivalent of {@link #markRead} — called when the customer opens/views the chat widget. */
+    public void markReadByCustomer(UUID conversationId) {
+        Conversation conversation = getOrThrow(conversationId);
+        conversation.setCustomerReadAt(Instant.now());
+        broadcastReadStatus(conversation);
+    }
+
+    private void broadcastReadStatus(Conversation conversation) {
+        messagingTemplate.convertAndSend(
+                "/topic/conversations/" + conversation.getId() + "/read",
+                new ConversationReadStatusResponse(conversation.getId(), conversation.getCustomerReadAt(), conversation.getAdminReadAt())
+        );
     }
 
     public void delete(UUID conversationId) {
@@ -207,7 +224,9 @@ public class ConversationService {
                 messages,
                 c.getUnread(),
                 c.getCreatedAt(),
-                c.getLastMessageAt()
+                c.getLastMessageAt(),
+                c.getCustomerReadAt(),
+                c.getAdminReadAt()
         );
     }
 

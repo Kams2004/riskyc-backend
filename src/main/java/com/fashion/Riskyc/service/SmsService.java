@@ -19,13 +19,16 @@ import java.nio.charset.StandardCharsets;
  * does nothing when unconfigured (no client id/secret/sender), so the app
  * works identically before and after credentials are added.
  *
- * API contract (Orange Developer — SMS Cameroon 2.0), confirmed against the
- * account-specific code sample in the Orange Developer console:
+ * API contract (Orange Developer — SMS Africa & Middle East / SMS Cameroon),
+ * confirmed against Orange's own published integration guide:
  *   token: POST https://api.orange.com/oauth/v3/token   (client_credentials, Basic auth)
  *   send:  POST https://api.orange.com/smsmessaging/v1/outbound/tel%3A%2B{senderNumber}/requests
  * The "tel:+{senderNumber}" segment must be percent-encoded in the URL path
  * itself (colon and plus aren't legal unescaped there) — built as a raw
  * java.net.URI below so Spring doesn't re-encode (or double-encode) it.
+ * senderNumber is the fixed per-country value from Orange's own table (e.g.
+ * "2370000" for Cameroon) — the same for every account in that country, not
+ * something specific to this subscription.
  */
 @Service
 @Slf4j
@@ -42,11 +45,10 @@ public class SmsService {
     private String clientSecret;
 
     /**
-     * The Orange-assigned sender address for this subscription (digits only,
-     * no '+', e.g. "2370000") — NOT your own phone number, and NOT the
-     * numeric "SMS <n>" default sender *name* shown under Authorized
-     * senders. Read it off the "senderAddress": "tel:+<this>" field in the
-     * account-specific code sample under Configure > Get sample code.
+     * The fixed per-country sender address Orange documents for their SMS
+     * API (digits only, no '+') — "2370000" for Cameroon, same for every
+     * account in that country. NOT your own phone number, and NOT the
+     * numeric "SMS <n>" default sender *name* shown under Authorized senders.
      */
     @Value("${app.orange.sms.sender-number:}")
     private String senderNumber;

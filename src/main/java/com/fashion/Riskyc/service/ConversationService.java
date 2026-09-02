@@ -10,6 +10,7 @@ import com.fashion.Riskyc.exception.ResourceNotFoundException;
 import com.fashion.Riskyc.repository.ChatMessageRepository;
 import com.fashion.Riskyc.repository.ConversationRepository;
 import com.fashion.Riskyc.repository.CustomerRepository;
+import com.fashion.Riskyc.repository.DeliveryContactRepository;
 import com.fashion.Riskyc.repository.OrderRepository;
 import com.fashion.Riskyc.security.CurrentAdmin;
 import lombok.RequiredArgsConstructor;
@@ -20,6 +21,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -37,6 +39,7 @@ public class ConversationService {
     private final ChatMessageRepository chatMessageRepository;
     private final CustomerRepository customerRepository;
     private final OrderRepository orderRepository;
+    private final DeliveryContactRepository deliveryContactRepository;
     private final SimpMessagingTemplate messagingTemplate;
     private final NotificationService notificationService;
     private final S3MediaService s3MediaService;
@@ -61,6 +64,97 @@ public class ConversationService {
                 .findFirst()
                 .map(this::toResponse)
                 .orElse(null);
+    }
+
+    /**
+     * Lets the tracking page (which a guest with no account can reach) find
+     * the thread linked to their order, even though they have no customerId
+     * to look up by — so a packaging-confirmation message shows in their
+     * chat widget too, on the same device, without ever needing an account.
+     */
+    @Transactional(readOnly = true)
+    public ConversationResponse getByOrderId(UUID orderId) {
+        return conversationRepository.findByOrder_Id(orderId).map(this::toResponse).orElse(null);
+    }
+
+    /** The latest packaging-confirmation message for this order's thread, if any — used to populate OrderResponse.packagingConfirmation. */
+    @Transactional(readOnly = true)
+    public ChatMessageResponse getPackagingConfirmationMessage(UUID orderId) {
+        return conversationRepository.findByOrder_Id(orderId)
+                .flatMap(conv -> chatMessageRepository.findFirstByConversationIdAndPackagingConfirmationTrueOrderByTimestampDesc(conv.getId()))
+                .map(this::toResponse)
+                .orElse(null);
+    }
+
+    /**
+     * Sends the "your order has been packaged" confirmation: finds (or
+     * creates) the conversation for this order, appends the current
+     * delivery-team contact list to the admin's message automatically, and
+     * flags the message so the tracking page renders it as its own card
+     * instead of a plain chat bubble.
+     */
+    public ChatMessageResponse sendPackagingConfirmation(UUID orderId, String text, MultipartFile image) {
+        Order order = orderRepository.findById(orderId).orElseThrow(() -> ResourceNotFoundException.of("Order", orderId));
+        Conversation conversation = findOrCreateConversationForOrder(order);
+
+        String deliveryBlock = buildDeliveryTeamBlock();
+        String customText = text != null ? text.trim() : "";
+        String fullText = customText.isBlank() ? deliveryBlock : customText + "\n\n" + deliveryBlock;
+
+        ChatMessage message = ChatMessage.builder()
+                .conversation(conversation)
+                .sender(MessageSender.ADMIN)
+                .text(fullText)
+                .packagingConfirmation(true)
+                .adminSenderName(CurrentAdmin.nameOrNull())
+                .build();
+        if (image != null && !image.isEmpty()) {
+            String key = s3MediaService.upload(image, CHAT_IMAGE_FOLDER + "/" + conversation.getId());
+            message.setImageStorageKey(key);
+        }
+        message = chatMessageRepository.saveAndFlush(message);
+        conversation.getMessages().add(message);
+        conversation.setLastMessageAt(Instant.now());
+
+        ChatMessageResponse response = toResponse(message);
+        messagingTemplate.convertAndSend("/topic/conversations/" + conversation.getId(), response);
+        if (conversation.getCustomer() != null) {
+            notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
+                    "Your order has been packaged!", conversation.getId().toString());
+        }
+        return response;
+    }
+
+    /** Same match order the frontend used to use client-side (customerId first, then orderId) — now done once, server-side, so it works reliably for guests too. */
+    private Conversation findOrCreateConversationForOrder(Order order) {
+        Optional<Conversation> existing = conversationRepository.findByOrder_Id(order.getId());
+        if (existing.isEmpty() && order.getCustomer() != null) {
+            existing = conversationRepository.findByCustomerIdOrderByLastMessageAtDesc(order.getCustomer().getId()).stream().findFirst();
+        }
+        Conversation conversation = existing.orElseGet(() -> conversationRepository.saveAndFlush(Conversation.builder()
+                .customerName(order.getCustomerInfo() != null
+                        ? order.getCustomerInfo().getFirstName() + " " + order.getCustomerInfo().getLastName()
+                        : "Customer")
+                .customer(order.getCustomer())
+                .order(order)
+                .lastMessageAt(Instant.now())
+                .build()));
+        if (conversation.getOrder() == null) {
+            conversation.setOrder(order);
+        }
+        return conversation;
+    }
+
+    private String buildDeliveryTeamBlock() {
+        List<DeliveryContact> contacts = deliveryContactRepository.findAllByOrderByPositionAscCreatedAtAsc();
+        if (contacts.isEmpty()) return "";
+        StringBuilder sb = new StringBuilder("📦 Delivery Team:\n");
+        for (DeliveryContact contact : contacts) {
+            sb.append("• ").append(contact.getName()).append(" — ").append(contact.getPhone()).append("\n");
+        }
+        sb.append("\nChoose any of them to come collect your paid parcel. Send them a picture of the sealed parcel. ")
+                .append("You can also call any of them to bring you to the store if you don't know the location.");
+        return sb.toString();
     }
 
     public ConversationResponse create(CreateConversationRequest request) {
@@ -233,6 +327,6 @@ public class ConversationService {
     private ChatMessageResponse toResponse(ChatMessage m) {
         String imageUrl = m.getImageStorageKey() != null ? s3MediaService.getPresignedUrl(m.getImageStorageKey()) : null;
         String voiceUrl = m.getVoiceStorageKey() != null ? s3MediaService.getPresignedUrl(m.getVoiceStorageKey()) : null;
-        return new ChatMessageResponse(m.getId(), m.getConversation().getId(), m.getSender(), m.getText(), imageUrl, voiceUrl, m.getVoiceDurationSeconds(), m.getAdminSenderName(), m.getTimestamp());
+        return new ChatMessageResponse(m.getId(), m.getConversation().getId(), m.getSender(), m.getText(), imageUrl, voiceUrl, m.getVoiceDurationSeconds(), m.getAdminSenderName(), m.isPackagingConfirmation(), m.getTimestamp());
     }
 }

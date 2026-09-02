@@ -44,6 +44,7 @@ public class SecurityConfig {
     private static final String P_MANAGE_CATEGORIES = "PERM_MANAGE_CATEGORIES";
     private static final String P_VIEW_ORDERS = "PERM_VIEW_ORDERS";
     private static final String P_MANAGE_ORDERS = "PERM_MANAGE_ORDERS";
+    private static final String P_VIEW_TREATMENT = "PERM_VIEW_TREATMENT";
     private static final String P_MANAGE_TREATMENT = "PERM_MANAGE_TREATMENT";
     private static final String P_VIEW_CUSTOMERS = "PERM_VIEW_CUSTOMERS";
     private static final String P_MANAGE_CUSTOMERS = "PERM_MANAGE_CUSTOMERS";
@@ -116,6 +117,9 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/orders/{id}", "/api/orders/customer/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/conversations", "/api/conversations/messages", "/api/conversations/*/messages/image", "/api/conversations/*/messages/voice", "/api/conversations/*/read-by-customer").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/conversations/customer/**").permitAll()
+                        // A guest tracking page has no customerId to look up by, only the
+                        // orderId in the URL — this lets it find/adopt its own order's thread.
+                        .requestMatchers(HttpMethod.GET, "/api/conversations/order/**").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/conversations/{id}").permitAll()
                         .requestMatchers("/api/push/**").permitAll()
 
@@ -132,6 +136,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/orders/*/packaging/start", "/api/orders/*/packaging/complete")
                             .hasAuthority(P_MANAGE_TREATMENT)
                         .requestMatchers(HttpMethod.PATCH, "/api/orders/**").hasAuthority(P_MANAGE_ORDERS)
+                        .requestMatchers(HttpMethod.POST, "/api/conversations/order/*/packaging-confirmation").hasAuthority(P_MANAGE_ORDERS)
+
+                        // ── Delivery team contacts (attached automatically to packaging-confirmation messages) ──
+                        .requestMatchers(HttpMethod.GET, "/api/delivery-contacts").hasAuthority(P_VIEW_TREATMENT)
+                        .requestMatchers(HttpMethod.POST, "/api/delivery-contacts").hasAuthority(P_MANAGE_TREATMENT)
+                        .requestMatchers(HttpMethod.PUT, "/api/delivery-contacts/**").hasAuthority(P_MANAGE_TREATMENT)
+                        .requestMatchers(HttpMethod.DELETE, "/api/delivery-contacts/**").hasAuthority(P_MANAGE_TREATMENT)
 
                         // ── Customers (admin management) ──
                         .requestMatchers(HttpMethod.GET, "/api/customers").hasAuthority(P_VIEW_CUSTOMERS)

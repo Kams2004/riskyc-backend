@@ -24,9 +24,13 @@ public record OrderResponse(
         Instant statusChangedAt,
         String rejectionReason,
         String packagingStartedByName,
+        UUID packagingStartedById,
         Instant packagingStartedAt,
         String packagingCompletedByName,
+        UUID packagingCompletedById,
         Instant packagingCompletedAt,
+        /** The latest packaging-confirmation message sent for this order (see ConversationService), if any — null until an admin sends one. */
+        ChatMessageResponse packagingConfirmation,
         Instant createdAt,
         Instant updatedAt
 ) {

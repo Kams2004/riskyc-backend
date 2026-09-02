@@ -68,8 +68,11 @@ public class Order {
     private String rejectionReason;
 
     private String packagingStartedByName;
+    /** Paired with the name snapshot above — the stable id a "was this started by me?" check compares against (names can be edited/reused, ids can't). */
+    private UUID packagingStartedById;
     private Instant packagingStartedAt;
     private String packagingCompletedByName;
+    private UUID packagingCompletedById;
     private Instant packagingCompletedAt;
 
     @CreationTimestamp

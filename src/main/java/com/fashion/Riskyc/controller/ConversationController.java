@@ -44,6 +44,23 @@ public class ConversationController {
         return response != null ? ResponseEntity.ok(response) : ResponseEntity.noContent().build();
     }
 
+    /** Lets a guest's tracking page (no account, so no customerId to look up by) find its order's thread and adopt it into the chat widget. */
+    @GetMapping("/order/{orderId}")
+    public ResponseEntity<ConversationResponse> getByOrderId(@PathVariable UUID orderId) {
+        ConversationResponse response = conversationService.getByOrderId(orderId);
+        return response != null ? ResponseEntity.ok(response) : ResponseEntity.noContent().build();
+    }
+
+    /** Admin-only: sends the "your order has been packaged" confirmation — text and/or a photo, with the delivery team's contact info appended automatically. */
+    @PostMapping("/order/{orderId}/packaging-confirmation")
+    public ChatMessageResponse sendPackagingConfirmation(
+            @PathVariable UUID orderId,
+            @RequestParam(value = "text", required = false) String text,
+            @RequestParam(value = "file", required = false) MultipartFile file
+    ) {
+        return conversationService.sendPackagingConfirmation(orderId, text, file);
+    }
+
     @PostMapping
     public ResponseEntity<ConversationResponse> create(@Valid @RequestBody CreateConversationRequest request) {
         return ResponseEntity.status(201).body(conversationService.create(request));

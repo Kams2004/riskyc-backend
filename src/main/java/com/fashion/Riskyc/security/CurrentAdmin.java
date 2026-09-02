@@ -4,6 +4,7 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.Optional;
+import java.util.UUID;
 
 /**
  * Reads the authenticated admin (if any) straight from the security context,
@@ -28,5 +29,10 @@ public final class CurrentAdmin {
     /** The current admin's display name, or null if the request wasn't made by an authenticated admin. */
     public static String nameOrNull() {
         return get().map(AdminPrincipal::name).orElse(null);
+    }
+
+    /** The current admin's id, or null if the request wasn't made by an authenticated admin. */
+    public static UUID idOrNull() {
+        return get().map(p -> UUID.fromString(p.userId())).orElse(null);
     }
 }

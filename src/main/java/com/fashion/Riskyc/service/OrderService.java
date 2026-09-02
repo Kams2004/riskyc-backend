@@ -44,6 +44,7 @@ public class OrderService {
     private final PushNotificationService pushNotificationService;
     private final SmsService smsService;
     private final TwilioSmsService twilioSmsService;
+    private final ConversationService conversationService;
 
     /** Twilio is preferred over Orange when both happen to be configured — never both, so having a second provider set up doesn't double the SMS cost of an order. */
     private void sendCustomerSms(String phone, String message) {
@@ -211,6 +212,7 @@ public class OrderService {
         }
         order.setStatus(OrderStatus.PACKAGING);
         order.setPackagingStartedByName(CurrentAdmin.nameOrNull());
+        order.setPackagingStartedById(CurrentAdmin.idOrNull());
         order.setPackagingStartedAt(Instant.now());
         OrderResponse response = toResponse(order);
         messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
@@ -225,6 +227,7 @@ public class OrderService {
         }
         order.setStatus(OrderStatus.PACKAGED);
         order.setPackagingCompletedByName(CurrentAdmin.nameOrNull());
+        order.setPackagingCompletedById(CurrentAdmin.idOrNull());
         order.setPackagingCompletedAt(Instant.now());
         OrderResponse response = toResponse(order);
         messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
@@ -317,9 +320,12 @@ public class OrderService {
                 o.getStatusChangedAt(),
                 o.getRejectionReason(),
                 o.getPackagingStartedByName(),
+                o.getPackagingStartedById(),
                 o.getPackagingStartedAt(),
                 o.getPackagingCompletedByName(),
+                o.getPackagingCompletedById(),
                 o.getPackagingCompletedAt(),
+                conversationService.getPackagingConfirmationMessage(o.getId()),
                 o.getCreatedAt(),
                 o.getUpdatedAt()
         );

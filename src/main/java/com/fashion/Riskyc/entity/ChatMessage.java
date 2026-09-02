@@ -50,6 +50,11 @@ public class ChatMessage {
      */
     private String adminSenderName;
 
+    /** True for the special "your order has been packaged" message an admin sends from the order detail page — rendered as its own card on the tracking page, with the delivery team's contact info appended automatically. */
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean packagingConfirmation = false;
+
     @CreationTimestamp
     @Column(updatable = false)
     private Instant timestamp;

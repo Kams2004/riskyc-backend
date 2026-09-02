@@ -15,6 +15,7 @@ public record ChatMessageResponse(
         Integer voiceDurationSeconds,
         /** Staff member who sent this, when sender is ADMIN — never expose this to the customer widget. */
         String adminSenderName,
+        boolean packagingConfirmation,
         Instant timestamp
 ) {
 }

@@ -6,6 +6,8 @@ import lombok.*;
 import org.hibernate.annotations.CreationTimestamp;
 
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 
 @Entity
@@ -63,6 +65,18 @@ public class ChatMessage {
     @Column(nullable = false, columnDefinition = "boolean not null default false")
     @Builder.Default
     private boolean packagingConfirmation = false;
+
+    /**
+     * Frozen delivery-team roster for a packaging-confirmation message — see
+     * {@link DeliveryContactSnapshot}. A brand-new join table, so (unlike
+     * {@link #packagingConfirmation} above) there's no populated-table
+     * migration hazard here.
+     */
+    @ElementCollection
+    @CollectionTable(name = "chat_message_delivery_contacts", joinColumns = @JoinColumn(name = "chat_message_id"))
+    @OrderColumn(name = "position")
+    @Builder.Default
+    private List<DeliveryContactSnapshot> deliveryContacts = new ArrayList<>();
 
     @CreationTimestamp
     @Column(updatable = false)

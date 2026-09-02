@@ -3,6 +3,7 @@ package com.fashion.Riskyc.dto.response;
 import com.fashion.Riskyc.entity.MessageSender;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 public record ChatMessageResponse(
@@ -16,6 +17,8 @@ public record ChatMessageResponse(
         /** Staff member who sent this, when sender is ADMIN — never expose this to the customer widget. */
         String adminSenderName,
         boolean packagingConfirmation,
+        /** Non-empty only on a packagingConfirmation message — the delivery team roster at the moment it was sent. */
+        List<DeliveryContactSnapshotResponse> deliveryContacts,
         Instant timestamp
 ) {
 }

@@ -5,6 +5,7 @@ import com.fashion.Riskyc.dto.request.SendMessageRequest;
 import com.fashion.Riskyc.dto.response.ChatMessageResponse;
 import com.fashion.Riskyc.dto.response.ConversationReadStatusResponse;
 import com.fashion.Riskyc.dto.response.ConversationResponse;
+import com.fashion.Riskyc.dto.response.DeliveryContactSnapshotResponse;
 import com.fashion.Riskyc.entity.*;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
 import com.fashion.Riskyc.repository.ChatMessageRepository;
@@ -97,15 +98,20 @@ public class ConversationService {
         Order order = orderRepository.findById(orderId).orElseThrow(() -> ResourceNotFoundException.of("Order", orderId));
         Conversation conversation = findOrCreateConversationForOrder(order);
 
-        String deliveryBlock = buildDeliveryTeamBlock();
+        // A snapshot, not a live reference — a contact edited/deleted later
+        // shouldn't rewrite what an already-sent confirmation showed.
+        List<DeliveryContactSnapshot> deliveryContacts = deliveryContactRepository.findAllByOrderByPositionAscCreatedAtAsc()
+                .stream()
+                .map(c -> new DeliveryContactSnapshot(c.getName(), c.getPhone()))
+                .toList();
         String customText = text != null ? text.trim() : "";
-        String fullText = customText.isBlank() ? deliveryBlock : customText + "\n\n" + deliveryBlock;
 
         ChatMessage message = ChatMessage.builder()
                 .conversation(conversation)
                 .sender(MessageSender.ADMIN)
-                .text(fullText)
+                .text(customText)
                 .packagingConfirmation(true)
+                .deliveryContacts(deliveryContacts)
                 .adminSenderName(CurrentAdmin.nameOrNull())
                 .build();
         if (image != null && !image.isEmpty()) {
@@ -143,18 +149,6 @@ public class ConversationService {
             conversation.setOrder(order);
         }
         return conversation;
-    }
-
-    private String buildDeliveryTeamBlock() {
-        List<DeliveryContact> contacts = deliveryContactRepository.findAllByOrderByPositionAscCreatedAtAsc();
-        if (contacts.isEmpty()) return "";
-        StringBuilder sb = new StringBuilder("📦 Delivery Team:\n");
-        for (DeliveryContact contact : contacts) {
-            sb.append("• ").append(contact.getName()).append(" — ").append(contact.getPhone()).append("\n");
-        }
-        sb.append("\nChoose any of them to come collect your paid parcel. Send them a picture of the sealed parcel. ")
-                .append("You can also call any of them to bring you to the store if you don't know the location.");
-        return sb.toString();
     }
 
     public ConversationResponse create(CreateConversationRequest request) {
@@ -327,6 +321,9 @@ public class ConversationService {
     private ChatMessageResponse toResponse(ChatMessage m) {
         String imageUrl = m.getImageStorageKey() != null ? s3MediaService.getPresignedUrl(m.getImageStorageKey()) : null;
         String voiceUrl = m.getVoiceStorageKey() != null ? s3MediaService.getPresignedUrl(m.getVoiceStorageKey()) : null;
-        return new ChatMessageResponse(m.getId(), m.getConversation().getId(), m.getSender(), m.getText(), imageUrl, voiceUrl, m.getVoiceDurationSeconds(), m.getAdminSenderName(), m.isPackagingConfirmation(), m.getTimestamp());
+        List<DeliveryContactSnapshotResponse> deliveryContacts = m.getDeliveryContacts().stream()
+                .map(c -> new DeliveryContactSnapshotResponse(c.getName(), c.getPhone()))
+                .toList();
+        return new ChatMessageResponse(m.getId(), m.getConversation().getId(), m.getSender(), m.getText(), imageUrl, voiceUrl, m.getVoiceDurationSeconds(), m.getAdminSenderName(), m.isPackagingConfirmation(), deliveryContacts, m.getTimestamp());
     }
 }

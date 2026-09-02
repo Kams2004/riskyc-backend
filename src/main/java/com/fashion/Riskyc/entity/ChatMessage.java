@@ -50,8 +50,17 @@ public class ChatMessage {
      */
     private String adminSenderName;
 
-    /** True for the special "your order has been packaged" message an admin sends from the order detail page — rendered as its own card on the tracking page, with the delivery team's contact info appended automatically. */
-    @Column(nullable = false)
+    /**
+     * True for the special "your order has been packaged" message an admin sends from the
+     * order detail page — rendered as its own card on the tracking page, with the delivery
+     * team's contact info appended automatically.
+     *
+     * <p>{@code columnDefinition} carries an explicit DB-level default — without one, adding
+     * this NOT NULL column to the already-populated {@code chat_message} table on an existing
+     * deployment (ddl-auto=update) fails outright ("column contains null values"), silently
+     * leaving the column missing and breaking every chat insert, not just this feature's.
+     */
+    @Column(nullable = false, columnDefinition = "boolean not null default false")
     @Builder.Default
     private boolean packagingConfirmation = false;
 

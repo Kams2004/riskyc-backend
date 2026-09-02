@@ -10,6 +10,7 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
@@ -33,6 +34,36 @@ public class DataSeeder implements CommandLineRunner {
         seedCategories();
         Role superAdminRole = seedRoles();
         seedAdminUser(superAdminRole);
+        backfillManagePermissionsImplyView();
+    }
+
+    /**
+     * A role saved before RoleService started normalizing permissions (or
+     * edited directly in the DB) can hold a MANAGE_X permission with no
+     * matching VIEW_X — e.g. a role with only "Manage Orders" can't see the
+     * order list at all, so there's nothing to manage. Runs on every boot;
+     * a no-op once every role is already normalized.
+     */
+    private void backfillManagePermissionsImplyView() {
+        for (Role role : roleRepository.findAll()) {
+            Set<Permission> permissions = new HashSet<>(role.getPermissions());
+            boolean changed = false;
+            for (Permission p : role.getPermissions()) {
+                if (p.name().startsWith("MANAGE_")) {
+                    try {
+                        Permission view = Permission.valueOf("VIEW_" + p.name().substring("MANAGE_".length()));
+                        changed |= permissions.add(view);
+                    } catch (IllegalArgumentException ignored) {
+                        // No matching VIEW_ counterpart for this permission — nothing to imply.
+                    }
+                }
+            }
+            if (changed) {
+                role.setPermissions(permissions);
+                roleRepository.save(role);
+                log.info("Backfilled implied View permissions for role '{}'", role.getName());
+            }
+        }
     }
 
     private void seedCategories() {

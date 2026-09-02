@@ -2,6 +2,7 @@ package com.fashion.Riskyc.service;
 
 import com.fashion.Riskyc.dto.request.RoleRequest;
 import com.fashion.Riskyc.dto.response.RoleResponse;
+import com.fashion.Riskyc.entity.Permission;
 import com.fashion.Riskyc.entity.Role;
 import com.fashion.Riskyc.exception.BadRequestException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
@@ -12,6 +13,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 
 @Service
@@ -33,7 +35,7 @@ public class RoleService {
         Role role = roleRepository.saveAndFlush(Role.builder()
                 .name(request.name())
                 .description(request.description())
-                .permissions(request.permissions() != null ? new HashSet<>(request.permissions()) : new HashSet<>())
+                .permissions(normalize(request.permissions()))
                 .build());
         return toResponse(role);
     }
@@ -42,8 +44,30 @@ public class RoleService {
         Role role = getOrThrow(id);
         role.setName(request.name());
         role.setDescription(request.description());
-        role.setPermissions(request.permissions() != null ? new HashSet<>(request.permissions()) : new HashSet<>());
+        role.setPermissions(normalize(request.permissions()));
         return toResponse(role);
+    }
+
+    /**
+     * A "Manage X" permission is useless on its own — every page and API read
+     * it needs (the order list, the products grid, ...) is gated on "View X",
+     * so an admin who only ticks "Manage Orders" in the role editor ends up
+     * with a role that can't see anything to manage. Rather than trust every
+     * caller (this editor, future ones, DataSeeder) to remember the pairing,
+     * every MANAGE_X permission implies its VIEW_X counterpart here, once.
+     */
+    private static Set<Permission> normalize(Set<Permission> requested) {
+        Set<Permission> permissions = requested != null ? new HashSet<>(requested) : new HashSet<>();
+        for (Permission p : new HashSet<>(permissions)) {
+            if (p.name().startsWith("MANAGE_")) {
+                try {
+                    permissions.add(Permission.valueOf("VIEW_" + p.name().substring("MANAGE_".length())));
+                } catch (IllegalArgumentException ignored) {
+                    // No matching VIEW_ counterpart for this permission — nothing to imply.
+                }
+            }
+        }
+        return permissions;
     }
 
     public void delete(UUID id) {

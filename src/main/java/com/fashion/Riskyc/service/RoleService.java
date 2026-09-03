@@ -67,6 +67,14 @@ public class RoleService {
                 }
             }
         }
+        // Treatment is a specialized view over orders (validated/packaging/
+        // packaged) — the Treatment page fetches through the same GET
+        // /api/orders every order list uses, just filtered client-side. A
+        // Treatment-only role can claim and complete packaging but never
+        // actually see anything to work on without VIEW_ORDERS too.
+        if (permissions.contains(Permission.VIEW_TREATMENT)) {
+            permissions.add(Permission.VIEW_ORDERS);
+        }
         return permissions;
     }
 

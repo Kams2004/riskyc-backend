@@ -4,15 +4,18 @@ import com.fashion.Riskyc.entity.*;
 import com.fashion.Riskyc.repository.AdminUserRepository;
 import com.fashion.Riskyc.repository.CategoryRepository;
 import com.fashion.Riskyc.repository.RoleRepository;
+import com.fashion.Riskyc.repository.SubcategoryRepository;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import java.text.Normalizer;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import java.util.regex.Pattern;
 
 /**
  * Seeds a minimal, working dataset on first boot (empty DB only) so the API
@@ -25,9 +28,12 @@ import java.util.Set;
 public class DataSeeder implements CommandLineRunner {
 
     private final CategoryRepository categoryRepository;
+    private final SubcategoryRepository subcategoryRepository;
     private final RoleRepository roleRepository;
     private final AdminUserRepository adminUserRepository;
     private final PasswordEncoder passwordEncoder;
+
+    private static final Pattern VALID_SLUG = Pattern.compile("^[a-z0-9]+(-[a-z0-9]+)*$");
 
     @Override
     public void run(String... args) {
@@ -35,6 +41,7 @@ public class DataSeeder implements CommandLineRunner {
         Role superAdminRole = seedRoles();
         seedAdminUser(superAdminRole);
         backfillManagePermissionsImplyView();
+        backfillMalformedCategorySlugs();
     }
 
     /**
@@ -58,12 +65,71 @@ public class DataSeeder implements CommandLineRunner {
                     }
                 }
             }
+            // Treatment reuses GET /api/orders under the hood (filtered
+            // client-side) — a Treatment-only role can claim/complete
+            // packaging but never see anything to work on without this too.
+            if (permissions.contains(Permission.VIEW_TREATMENT)) {
+                changed |= permissions.add(Permission.VIEW_ORDERS);
+            }
             if (changed) {
                 role.setPermissions(permissions);
                 roleRepository.save(role);
                 log.info("Backfilled implied View permissions for role '{}'", role.getName());
             }
         }
+    }
+
+    /**
+     * The admin panel's category editor used to slugify a name by only
+     * lowercasing it and collapsing whitespace — a name like "Pantalon/Trouser"
+     * became the slug "pantalon/trouser", with the "/" carried straight
+     * through. Since category URLs are /category/{slug}, that extra slash
+     * turns one path segment into two — Next.js then matches the
+     * category+subcategory route instead of the plain category one, so the
+     * page 404s as "Subcategory not found". The editor now generates clean
+     * slugs going forward; this repairs every category/subcategory saved
+     * before that fix, on every boot (a no-op once everything is clean).
+     */
+    private void backfillMalformedCategorySlugs() {
+        // findAllByOrderByNameAsc (not findAll) — it eagerly fetches
+        // subcategories via @EntityGraph; DataSeeder runs outside any
+        // Hibernate session, so a lazy collection would blow up here.
+        for (Category category : categoryRepository.findAllByOrderByNameAsc()) {
+            if (!VALID_SLUG.matcher(category.getSlug()).matches()) {
+                String fixed = uniqueSlug(slugify(category.getName()), categoryRepository::existsBySlug);
+                log.info("Fixing malformed category slug '{}' -> '{}'", category.getSlug(), fixed);
+                category.setSlug(fixed);
+                categoryRepository.save(category);
+            }
+            Set<String> siblingSlugs = new HashSet<>();
+            for (Subcategory sub : category.getSubcategories()) {
+                if (!VALID_SLUG.matcher(sub.getSlug()).matches()) {
+                    String base = slugify(sub.getName());
+                    String fixed = uniqueSlug(base, siblingSlugs::contains);
+                    log.info("Fixing malformed subcategory slug '{}' -> '{}' (category '{}')", sub.getSlug(), fixed, category.getSlug());
+                    sub.setSlug(fixed);
+                    subcategoryRepository.save(sub);
+                    siblingSlugs.add(fixed);
+                } else {
+                    siblingSlugs.add(sub.getSlug());
+                }
+            }
+        }
+    }
+
+    private static String uniqueSlug(String base, java.util.function.Predicate<String> taken) {
+        String candidate = base;
+        int suffix = 2;
+        while (taken.test(candidate)) {
+            candidate = base + "-" + suffix++;
+        }
+        return candidate;
+    }
+
+    private static String slugify(String name) {
+        String withoutAccents = Normalizer.normalize(name, Normalizer.Form.NFD).replaceAll("\\p{M}", "");
+        String slug = withoutAccents.toLowerCase().replaceAll("[^a-z0-9]+", "-").replaceAll("^-+|-+$", "");
+        return slug.isBlank() ? "category" : slug;
     }
 
     private void seedCategories() {

@@ -34,6 +34,9 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     /** Storefront-visible product count per category — used to hide empty categories from the nav/footer. */
     long countByCategoryIdAndHiddenFalse(UUID categoryId);
 
+    /** Same, per subcategory — used to hide empty subcategories from the same surfaces. */
+    long countBySubcategoryIdAndHiddenFalse(UUID subcategoryId);
+
     @Query("""
             select p from Product p
             where p.hidden = false

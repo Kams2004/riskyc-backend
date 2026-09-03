@@ -153,6 +153,9 @@ public class CategoryService {
     }
 
     private SubcategoryResponse toResponse(Subcategory s) {
-        return new SubcategoryResponse(s.getId(), s.getSlug(), s.getName(), s.getNameFr());
+        return new SubcategoryResponse(
+                s.getId(), s.getSlug(), s.getName(), s.getNameFr(),
+                productRepository.countBySubcategoryIdAndHiddenFalse(s.getId())
+        );
     }
 }

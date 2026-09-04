@@ -75,6 +75,14 @@ public class RoleService {
         if (permissions.contains(Permission.VIEW_TREATMENT)) {
             permissions.add(Permission.VIEW_ORDERS);
         }
+        // Whoever can validate an order (MANAGE_ORDERS) or package it
+        // (MANAGE_TREATMENT) should be able to send the "your order has
+        // been packaged" confirmation without a separate, easy-to-forget
+        // checkbox — SEND_PACKAGING_MESSAGE stays independently assignable
+        // for a role that should only do that and nothing else.
+        if (permissions.contains(Permission.MANAGE_ORDERS) || permissions.contains(Permission.MANAGE_TREATMENT)) {
+            permissions.add(Permission.SEND_PACKAGING_MESSAGE);
+        }
         return permissions;
     }
 

@@ -6,6 +6,8 @@ public enum Permission {
     MANAGE_ORDERS,
     VIEW_TREATMENT,
     MANAGE_TREATMENT,
+    /** Sends the "your order has been packaged" confirmation to the customer — granted automatically to whoever can validate (MANAGE_ORDERS) or package (MANAGE_TREATMENT) an order, but assignable on its own too. */
+    SEND_PACKAGING_MESSAGE,
     VIEW_PRODUCTS,
     MANAGE_PRODUCTS,
     VIEW_CATEGORIES,

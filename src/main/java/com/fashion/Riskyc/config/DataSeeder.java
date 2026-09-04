@@ -71,6 +71,12 @@ public class DataSeeder implements CommandLineRunner {
             if (permissions.contains(Permission.VIEW_TREATMENT)) {
                 changed |= permissions.add(Permission.VIEW_ORDERS);
             }
+            // Whoever can validate (MANAGE_ORDERS) or package (MANAGE_TREATMENT)
+            // an order should be able to send the packaging-confirmation message
+            // without a separate, easy-to-forget checkbox.
+            if (permissions.contains(Permission.MANAGE_ORDERS) || permissions.contains(Permission.MANAGE_TREATMENT)) {
+                changed |= permissions.add(Permission.SEND_PACKAGING_MESSAGE);
+            }
             if (changed) {
                 role.setPermissions(permissions);
                 roleRepository.save(role);

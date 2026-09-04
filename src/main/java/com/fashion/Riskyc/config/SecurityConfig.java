@@ -46,6 +46,7 @@ public class SecurityConfig {
     private static final String P_MANAGE_ORDERS = "PERM_MANAGE_ORDERS";
     private static final String P_VIEW_TREATMENT = "PERM_VIEW_TREATMENT";
     private static final String P_MANAGE_TREATMENT = "PERM_MANAGE_TREATMENT";
+    private static final String P_SEND_PACKAGING_MESSAGE = "PERM_SEND_PACKAGING_MESSAGE";
     private static final String P_VIEW_CUSTOMERS = "PERM_VIEW_CUSTOMERS";
     private static final String P_MANAGE_CUSTOMERS = "PERM_MANAGE_CUSTOMERS";
     private static final String P_VIEW_USERS = "PERM_VIEW_USERS";
@@ -136,7 +137,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/orders/*/packaging/start", "/api/orders/*/packaging/complete")
                             .hasAuthority(P_MANAGE_TREATMENT)
                         .requestMatchers(HttpMethod.PATCH, "/api/orders/**").hasAuthority(P_MANAGE_ORDERS)
-                        .requestMatchers(HttpMethod.POST, "/api/conversations/order/*/packaging-confirmation").hasAuthority(P_MANAGE_ORDERS)
+                        .requestMatchers(HttpMethod.POST, "/api/conversations/order/*/packaging-confirmation").hasAuthority(P_SEND_PACKAGING_MESSAGE)
 
                         // ── Delivery team contacts (attached automatically to packaging-confirmation messages) ──
                         .requestMatchers(HttpMethod.GET, "/api/delivery-contacts").hasAuthority(P_VIEW_TREATMENT)

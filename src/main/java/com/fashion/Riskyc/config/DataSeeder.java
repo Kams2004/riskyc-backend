@@ -11,6 +11,10 @@ import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
 
+import javax.sql.DataSource;
+import java.sql.Connection;
+import java.sql.SQLException;
+import java.sql.Statement;
 import java.text.Normalizer;
 import java.util.HashSet;
 import java.util.List;
@@ -32,16 +36,38 @@ public class DataSeeder implements CommandLineRunner {
     private final RoleRepository roleRepository;
     private final AdminUserRepository adminUserRepository;
     private final PasswordEncoder passwordEncoder;
+    private final DataSource dataSource;
 
     private static final Pattern VALID_SLUG = Pattern.compile("^[a-z0-9]+(-[a-z0-9]+)*$");
 
     @Override
     public void run(String... args) {
+        dropStaleEnumCheckConstraints();
         seedCategories();
         Role superAdminRole = seedRoles();
         seedAdminUser(superAdminRole);
         backfillManagePermissionsImplyView();
         backfillMalformedCategorySlugs();
+    }
+
+    /**
+     * Postgres CHECK constraints Hibernate generates for @Enumerated(STRING)
+     * columns freeze in whichever enum values existed the moment the table
+     * was first created — ddl-auto=update adds missing tables/columns on
+     * later boots but never revisits an existing constraint, so every
+     * permission added after role_permissions first existed would violate
+     * it and crash the whole app on startup (exactly what SEND_PACKAGING_MESSAGE
+     * just did in production). Role.permissions now maps to a plain varchar
+     * with no such constraint going forward; this drops the leftover
+     * constraint from before that fix, on every boot — a no-op once it's
+     * gone, and runs before anything else touches role_permissions.
+     */
+    private void dropStaleEnumCheckConstraints() {
+        try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
+            stmt.execute("ALTER TABLE role_permissions DROP CONSTRAINT IF EXISTS role_permissions_permission_check");
+        } catch (SQLException e) {
+            log.warn("Could not drop stale role_permissions check constraint (harmless if it was already gone)", e);
+        }
     }
 
     /**

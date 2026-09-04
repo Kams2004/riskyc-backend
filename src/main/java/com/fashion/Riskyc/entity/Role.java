@@ -30,7 +30,14 @@ public class Role {
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "role_permissions", joinColumns = @JoinColumn(name = "role_id"))
     @Enumerated(EnumType.STRING)
-    @Column(name = "permission")
+    // Explicit columnDefinition, not just name — without it, Hibernate infers
+    // the column type from the enum's *current* constants and bakes a CHECK
+    // constraint listing them in at table-creation time. ddl-auto=update only
+    // adds missing tables/columns on later boots, it never revisits that
+    // constraint, so every permission added after the table first existed
+    // would violate it and crash the app on startup (as SEND_PACKAGING_MESSAGE
+    // just did). A plain varchar column carries no such constraint.
+    @Column(name = "permission", columnDefinition = "varchar(64)")
     @Builder.Default
     private Set<Permission> permissions = new HashSet<>();
 

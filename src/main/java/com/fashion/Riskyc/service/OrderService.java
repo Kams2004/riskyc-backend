@@ -154,6 +154,8 @@ public class OrderService {
         OrderResponse response = toResponse(order);
         notificationService.notifyAdmin(NotificationType.PAYMENT_PROOF_UPLOADED,
                 "Payment proof uploaded for order " + orderId, orderId.toString());
+        pushNotificationService.notifyOrder(orderId, "Payment proof received",
+                "We're reviewing your payment — tap to track your order.", siteUrl + "/track/" + orderId);
 
         // 1 of 3 order-lifecycle SMS — the customer has now fully completed
         // checkout (payment method chosen + proof uploaded), so this is the
@@ -216,6 +218,8 @@ public class OrderService {
         order.setPackagingStartedAt(Instant.now());
         OrderResponse response = toResponse(order);
         messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
+        pushNotificationService.notifyOrder(orderId, "Your order is being packaged",
+                "We've started packaging your order — tap to track it.", siteUrl + "/track/" + orderId);
         return response;
     }
 
@@ -231,6 +235,8 @@ public class OrderService {
         order.setPackagingCompletedAt(Instant.now());
         OrderResponse response = toResponse(order);
         messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
+        pushNotificationService.notifyOrder(orderId, "Your order has been packaged!",
+                "Your order is packaged and ready — tap to see the details.", siteUrl + "/track/" + orderId);
 
         // 3 of 3 order-lifecycle SMS.
         String customerPhone = order.getCustomerInfo() != null ? order.getCustomerInfo().getPhone() : null;

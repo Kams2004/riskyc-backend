@@ -1,6 +1,8 @@
 package com.fashion.Riskyc.service;
 
+import com.fashion.Riskyc.entity.ExpoPushToken;
 import com.fashion.Riskyc.entity.PushSubscription;
+import com.fashion.Riskyc.repository.ExpoPushTokenRepository;
 import com.fashion.Riskyc.repository.PushSubscriptionRepository;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +13,7 @@ import org.apache.http.HttpResponse;
 import org.bouncycastle.jce.provider.BouncyCastleProvider;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 
 import java.security.Security;
@@ -19,18 +22,23 @@ import java.util.Map;
 import java.util.UUID;
 
 /**
- * Sends browser Web Push notifications for order-status changes. Customers
- * have no account, so there's no "notify this user" concept — subscriptions
- * are tied to the order id itself (see {@link PushSubscription}), the same
- * model the public order-tracking page already uses.
+ * Sends order-status push notifications on both channels a customer might be
+ * on: browser Web Push (see {@link PushSubscription}) and the mobile app's
+ * Expo push tokens (see {@link ExpoPushToken}). Customers have no account,
+ * so there's no "notify this user" concept — both are tied to the order id
+ * itself, the same model the public order-tracking page/screen already uses.
  */
 @Service
 @RequiredArgsConstructor
 @Slf4j
 public class PushNotificationService {
 
+    private static final String EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send";
+
     private final PushSubscriptionRepository pushSubscriptionRepository;
+    private final ExpoPushTokenRepository expoPushTokenRepository;
     private final ObjectMapper objectMapper = new ObjectMapper();
+    private final RestClient restClient = RestClient.create();
 
     @Value("${app.push.vapid-public-key}")
     private String vapidPublicKey;
@@ -57,8 +65,13 @@ public class PushNotificationService {
         return vapidPublicKey;
     }
 
-    /** Fire-and-forget: never lets a bad/expired subscription (or the push service being down) affect the caller. */
+    /** Fire-and-forget: never lets a bad/expired subscription (or a push service being down) affect the caller. */
     public void notifyOrder(UUID orderId, String title, String body, String url) {
+        notifyWebPushSubscribers(orderId, title, body, url);
+        notifyExpoSubscribers(orderId, title, body, url);
+    }
+
+    private void notifyWebPushSubscribers(UUID orderId, String title, String body, String url) {
         if (pushService == null) return;
         List<PushSubscription> subs = pushSubscriptionRepository.findByOrderId(orderId);
         if (subs.isEmpty()) return;
@@ -84,6 +97,43 @@ public class PushNotificationService {
                 }
             } catch (Exception e) {
                 log.warn("Failed to send push notification to a subscriber of order {}: {}", orderId, e.getMessage());
+            }
+        }
+    }
+
+    private void notifyExpoSubscribers(UUID orderId, String title, String body, String url) {
+        List<ExpoPushToken> tokens = expoPushTokenRepository.findByOrderId(orderId);
+        if (tokens.isEmpty()) return;
+
+        for (ExpoPushToken token : tokens) {
+            try {
+                Map<String, Object> message = Map.of(
+                        "to", token.getToken(),
+                        "title", title,
+                        "body", body,
+                        "data", Map.of("url", url, "orderId", orderId.toString())
+                );
+                Map<?, ?> response = restClient.post()
+                        .uri(EXPO_PUSH_URL)
+                        .header("Content-Type", "application/json")
+                        .header("Accept", "application/json")
+                        .body(message)
+                        .retrieve()
+                        .body(Map.class);
+                Object data = response != null ? response.get("data") : null;
+                Object status = data instanceof Map<?, ?> m ? m.get("status") : null;
+                Object errDetails = data instanceof Map<?, ?> m ? m.get("details") : null;
+                if ("error".equals(status)) {
+                    Object errType = errDetails instanceof Map<?, ?> d ? d.get("error") : null;
+                    if ("DeviceNotRegistered".equals(errType)) {
+                        // The app was uninstalled or the token otherwise expired — stop trying it.
+                        expoPushTokenRepository.delete(token);
+                    } else {
+                        log.warn("Expo push to order {} returned error: {}", orderId, data);
+                    }
+                }
+            } catch (Exception e) {
+                log.warn("Failed to send Expo push notification for order {}: {}", orderId, e.getMessage());
             }
         }
     }

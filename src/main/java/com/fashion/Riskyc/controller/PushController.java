@@ -1,7 +1,10 @@
 package com.fashion.Riskyc.controller;
 
+import com.fashion.Riskyc.dto.request.ExpoPushSubscribeRequest;
 import com.fashion.Riskyc.dto.request.PushSubscribeRequest;
+import com.fashion.Riskyc.entity.ExpoPushToken;
 import com.fashion.Riskyc.entity.PushSubscription;
+import com.fashion.Riskyc.repository.ExpoPushTokenRepository;
 import com.fashion.Riskyc.repository.PushSubscriptionRepository;
 import com.fashion.Riskyc.service.PushNotificationService;
 import jakarta.validation.Valid;
@@ -23,6 +26,7 @@ public class PushController {
 
     private final PushNotificationService pushNotificationService;
     private final PushSubscriptionRepository pushSubscriptionRepository;
+    private final ExpoPushTokenRepository expoPushTokenRepository;
 
     @GetMapping("/vapid-public-key")
     public Map<String, String> vapidPublicKey() {
@@ -44,6 +48,23 @@ public class PushController {
     @DeleteMapping("/subscribe")
     public ResponseEntity<Void> unsubscribe(@RequestParam String endpoint) {
         pushSubscriptionRepository.deleteByEndpoint(endpoint);
+        return ResponseEntity.noContent().build();
+    }
+
+    /** Same model as {@link #subscribe}, for the mobile app's Expo push token instead of a browser subscription. */
+    @PostMapping("/expo/subscribe")
+    public ResponseEntity<Void> subscribeExpo(@Valid @RequestBody ExpoPushSubscribeRequest request) {
+        ExpoPushToken token = expoPushTokenRepository.findByToken(request.token())
+                .orElseGet(ExpoPushToken::new);
+        token.setOrderId(request.orderId());
+        token.setToken(request.token());
+        expoPushTokenRepository.save(token);
+        return ResponseEntity.status(201).build();
+    }
+
+    @DeleteMapping("/expo/subscribe")
+    public ResponseEntity<Void> unsubscribeExpo(@RequestParam String token) {
+        expoPushTokenRepository.deleteByToken(token);
         return ResponseEntity.noContent().build();
     }
 }

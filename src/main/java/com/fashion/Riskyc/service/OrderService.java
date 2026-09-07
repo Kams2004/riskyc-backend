@@ -22,8 +22,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Service
@@ -105,14 +109,38 @@ public class OrderService {
                 .total(BigDecimal.ZERO)
                 .build();
 
-        BigDecimal subtotal = BigDecimal.ZERO;
-        for (OrderItemRequest itemReq : request.items()) {
+        // Resolve every line's product up front, and group line indices by
+        // product id — a customer configuring the same product across
+        // several photos/sizes/colors (the per-photo picker) still gets bulk
+        // pricing on their COMBINED quantity for that product, not on each
+        // line in isolation (which would often miss every tier entirely).
+        List<Product> productsByIndex = new ArrayList<>(request.items().size());
+        Map<UUID, List<Integer>> indicesByProduct = new LinkedHashMap<>();
+        for (int i = 0; i < request.items().size(); i++) {
+            OrderItemRequest itemReq = request.items().get(i);
             Product product = productRepository.findById(itemReq.productId())
                     .orElseThrow(() -> new BadRequestException("Product not found: " + itemReq.productId()));
+            productsByIndex.add(product);
+            indicesByProduct.computeIfAbsent(product.getId(), k -> new ArrayList<>()).add(i);
+        }
 
-            BigDecimal lineTotal = computeLineTotal(product.getPrice(), product.getBulkPrices(), itemReq.quantity());
+        BigDecimal[] lineTotals = new BigDecimal[request.items().size()];
+        for (List<Integer> indices : indicesByProduct.values()) {
+            Product product = productsByIndex.get(indices.get(0));
+            List<Integer> quantities = indices.stream().map(i -> request.items().get(i).quantity()).toList();
+            List<BigDecimal> allocated = allocateGroupedLineTotals(product.getPrice(), product.getBulkPrices(), quantities);
+            for (int j = 0; j < indices.size(); j++) {
+                lineTotals[indices.get(j)] = allocated.get(j);
+            }
+        }
+
+        BigDecimal subtotal = BigDecimal.ZERO;
+        for (int i = 0; i < request.items().size(); i++) {
+            OrderItemRequest itemReq = request.items().get(i);
+            Product product = productsByIndex.get(i);
+            BigDecimal lineTotal = lineTotals[i];
             subtotal = subtotal.add(lineTotal);
-            BigDecimal effectiveUnitPrice = lineTotal.divide(BigDecimal.valueOf(itemReq.quantity()), 2, java.math.RoundingMode.HALF_UP);
+            BigDecimal effectiveUnitPrice = lineTotal.divide(BigDecimal.valueOf(itemReq.quantity()), 2, RoundingMode.HALF_UP);
 
             order.getItems().add(OrderItem.builder()
                     .order(order)
@@ -247,36 +275,73 @@ public class OrderService {
     }
 
     /**
-     * Prices one order line, applying the product's bulk/grouped-pricing
-     * tiers if it has any (mirrors lib/pricing.ts on the frontend, which
-     * shows the customer this same figure before they ever submit the
-     * order): greedily applies as many of the largest-quantity tier as fit,
-     * then the next-largest for whatever remains, and so on; anything left
-     * over once no tier fits is charged at the regular unit price. E.g. a
-     * 10-for-20,000 tier with a quantity of 12 → one tier (20,000) plus 2
-     * units at the regular unit price — never a partial/prorated tier rate.
+     * Splits the bulk/grouped-pricing tiers for a product across a list of
+     * order lines requesting that same product (e.g. one line per photo the
+     * per-photo picker was used to configure), pricing all of them together
+     * as a single continuous quantity rather than each line in isolation —
+     * 2 + 3 + 5 units of the same product across three lines gets a
+     * 10-for-20,000 tier exactly as if they'd been one line of 10, instead
+     * of each line individually falling short of the tier and paying full
+     * price. A later order adding one more unit (making 11) correctly costs
+     * the 10-unit tier plus one unit at the regular price, not a re-priced
+     * 11-unit blend.
+     *
+     * Tiers apply greedily by largest-quantity first (mirrors lib/pricing.ts
+     * on the frontend, which shows the customer this same figure before
+     * they submit): as many of the biggest tier as fit, then the next, and
+     * so on, with any leftover charged at the regular unit price — never a
+     * partial/prorated tier rate. The resulting tier "chunks" are then
+     * walked in the order the lines were given, splitting a chunk across a
+     * line boundary when a line's quantity doesn't line up evenly with it,
+     * so `quantities.size() == 1` naturally reduces to pricing one plain line.
      */
-    private BigDecimal computeLineTotal(BigDecimal unitPrice, List<BulkPriceTier> bulkPrices, int quantity) {
-        if (quantity <= 0) return BigDecimal.ZERO;
+    private List<BigDecimal> allocateGroupedLineTotals(BigDecimal unitPrice, List<BulkPriceTier> bulkPrices, List<Integer> quantities) {
+        int totalQuantity = quantities.stream().mapToInt(Integer::intValue).sum();
+        if (totalQuantity <= 0) return quantities.stream().map(q -> BigDecimal.ZERO).toList();
 
         List<BulkPriceTier> tiers = bulkPrices.stream()
                 .filter(t -> t.getQuantity() != null && t.getPrice() != null && t.getQuantity() > 0 && t.getPrice().signum() > 0)
                 .sorted(java.util.Comparator.comparingInt(BulkPriceTier::getQuantity).reversed())
                 .toList();
 
-        int remaining = quantity;
-        BigDecimal total = BigDecimal.ZERO;
+        record Chunk(int units, BigDecimal totalPrice) {}
+        List<Chunk> chunks = new ArrayList<>();
+        int remaining = totalQuantity;
         for (BulkPriceTier tier : tiers) {
             if (remaining >= tier.getQuantity()) {
                 int count = remaining / tier.getQuantity();
-                total = total.add(tier.getPrice().multiply(BigDecimal.valueOf(count)));
+                for (int i = 0; i < count; i++) {
+                    chunks.add(new Chunk(tier.getQuantity(), tier.getPrice()));
+                }
                 remaining -= count * tier.getQuantity();
             }
         }
         if (remaining > 0) {
-            total = total.add(unitPrice.multiply(BigDecimal.valueOf(remaining)));
+            chunks.add(new Chunk(remaining, unitPrice.multiply(BigDecimal.valueOf(remaining))));
         }
-        return total;
+
+        List<BigDecimal> lineTotals = new ArrayList<>(quantities.size());
+        int chunkIndex = 0;
+        int unitsUsedInChunk = 0;
+        for (int quantity : quantities) {
+            BigDecimal lineTotal = BigDecimal.ZERO;
+            int remainingForLine = quantity;
+            while (remainingForLine > 0) {
+                Chunk chunk = chunks.get(chunkIndex);
+                int unitsLeftInChunk = chunk.units() - unitsUsedInChunk;
+                int take = Math.min(remainingForLine, unitsLeftInChunk);
+                BigDecimal perUnit = chunk.totalPrice().divide(BigDecimal.valueOf(chunk.units()), 4, RoundingMode.HALF_UP);
+                lineTotal = lineTotal.add(perUnit.multiply(BigDecimal.valueOf(take)));
+                unitsUsedInChunk += take;
+                remainingForLine -= take;
+                if (unitsUsedInChunk >= chunk.units()) {
+                    chunkIndex++;
+                    unitsUsedInChunk = 0;
+                }
+            }
+            lineTotals.add(lineTotal.setScale(2, RoundingMode.HALF_UP));
+        }
+        return lineTotals;
     }
 
     private Order getOrThrow(UUID id) {

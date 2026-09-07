@@ -11,6 +11,7 @@ import com.fashion.Riskyc.exception.BadRequestException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
 import com.fashion.Riskyc.repository.AdminUserRepository;
 import com.fashion.Riskyc.repository.RoleRepository;
+import com.fashion.Riskyc.security.CurrentAdmin;
 import com.fashion.Riskyc.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -78,6 +79,14 @@ public class AdminUserService {
     public void delete(UUID id) {
         if (!adminUserRepository.existsById(id)) {
             throw ResourceNotFoundException.of("Admin user", id);
+        }
+        // A logged-in admin can update their own profile freely, but deleting
+        // it here — while still authenticated as it — would either orphan
+        // their own session or (worse, if they're the only admin left) lock
+        // everyone out until someone reseeds the database by hand. Force
+        // that decision through another admin account instead.
+        if (id.equals(CurrentAdmin.idOrNull())) {
+            throw new BadRequestException("You cannot delete your own account. Ask another admin to remove it if needed.");
         }
         adminUserRepository.deleteById(id);
     }

@@ -41,6 +41,7 @@ public class PushController {
         sub.setEndpoint(request.endpoint());
         sub.setP256dh(request.keys().p256dh());
         sub.setAuth(request.keys().auth());
+        sub.setLanguage("fr".equalsIgnoreCase(request.language()) ? "fr" : "en");
         pushSubscriptionRepository.save(sub);
         return ResponseEntity.status(201).build();
     }
@@ -58,6 +59,7 @@ public class PushController {
                 .orElseGet(ExpoPushToken::new);
         token.setOrderId(request.orderId());
         token.setToken(request.token());
+        token.setLanguage("fr".equalsIgnoreCase(request.language()) ? "fr" : "en");
         expoPushTokenRepository.save(token);
         return ResponseEntity.status(201).build();
     }

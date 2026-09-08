@@ -33,6 +33,11 @@ public class ExpoPushToken {
     @Column(nullable = false, unique = true, length = 255)
     private String token;
 
+    /** The app language active on this device when it subscribed ("en"/"fr") — lets a push notification's text match what the customer reads everywhere else. */
+    @Builder.Default
+    @Column(nullable = false, length = 5)
+    private String language = "en";
+
     @CreationTimestamp
     @Column(updatable = false)
     private Instant createdAt;

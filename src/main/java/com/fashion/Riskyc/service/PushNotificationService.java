@@ -1,5 +1,6 @@
 package com.fashion.Riskyc.service;
 
+import com.fashion.Riskyc.dto.LocalizedText;
 import com.fashion.Riskyc.entity.ExpoPushToken;
 import com.fashion.Riskyc.entity.PushSubscription;
 import com.fashion.Riskyc.repository.ExpoPushTokenRepository;
@@ -65,26 +66,28 @@ public class PushNotificationService {
         return vapidPublicKey;
     }
 
-    /** Fire-and-forget: never lets a bad/expired subscription (or a push service being down) affect the caller. */
-    public void notifyOrder(UUID orderId, String title, String body, String url) {
+    /** Fire-and-forget: never lets a bad/expired subscription (or a push service being down) affect the caller. Each subscriber gets the title/body in the language it subscribed with. */
+    public void notifyOrder(UUID orderId, LocalizedText title, LocalizedText body, String url) {
         notifyWebPushSubscribers(orderId, title, body, url);
         notifyExpoSubscribers(orderId, title, body, url);
     }
 
-    private void notifyWebPushSubscribers(UUID orderId, String title, String body, String url) {
+    private void notifyWebPushSubscribers(UUID orderId, LocalizedText title, LocalizedText body, String url) {
         if (pushService == null) return;
         List<PushSubscription> subs = pushSubscriptionRepository.findByOrderId(orderId);
         if (subs.isEmpty()) return;
 
-        String payload;
-        try {
-            payload = objectMapper.writeValueAsString(Map.of("title", title, "body", body, "url", url));
-        } catch (Exception e) {
-            log.error("Failed to serialize push payload", e);
-            return;
-        }
-
         for (PushSubscription sub : subs) {
+            String payload;
+            try {
+                payload = objectMapper.writeValueAsString(Map.of(
+                        "title", title.forLanguage(sub.getLanguage()),
+                        "body", body.forLanguage(sub.getLanguage()),
+                        "url", url));
+            } catch (Exception e) {
+                log.error("Failed to serialize push payload", e);
+                continue;
+            }
             try {
                 Notification notification = new Notification(sub.getEndpoint(), sub.getP256dh(), sub.getAuth(), payload);
                 HttpResponse response = pushService.send(notification);
@@ -101,7 +104,7 @@ public class PushNotificationService {
         }
     }
 
-    private void notifyExpoSubscribers(UUID orderId, String title, String body, String url) {
+    private void notifyExpoSubscribers(UUID orderId, LocalizedText title, LocalizedText body, String url) {
         List<ExpoPushToken> tokens = expoPushTokenRepository.findByOrderId(orderId);
         if (tokens.isEmpty()) return;
 
@@ -109,8 +112,8 @@ public class PushNotificationService {
             try {
                 Map<String, Object> message = Map.of(
                         "to", token.getToken(),
-                        "title", title,
-                        "body", body,
+                        "title", title.forLanguage(token.getLanguage()),
+                        "body", body.forLanguage(token.getLanguage()),
                         "data", Map.of("url", url, "orderId", orderId.toString())
                 );
                 Map<?, ?> response = restClient.post()

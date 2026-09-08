@@ -1,5 +1,6 @@
 package com.fashion.Riskyc.service;
 
+import com.fashion.Riskyc.dto.LocalizedText;
 import com.fashion.Riskyc.dto.request.CreateOrderRequest;
 import com.fashion.Riskyc.dto.request.CustomerInfoRequest;
 import com.fashion.Riskyc.dto.request.OrderItemRequest;
@@ -182,8 +183,11 @@ public class OrderService {
         OrderResponse response = toResponse(order);
         notificationService.notifyAdmin(NotificationType.PAYMENT_PROOF_UPLOADED,
                 "Payment proof uploaded for order " + orderId, orderId.toString());
-        pushNotificationService.notifyOrder(orderId, "Payment proof received",
-                "We're reviewing your payment — tap to track your order.", siteUrl + "/track/" + orderId);
+        pushNotificationService.notifyOrder(orderId,
+                new LocalizedText("Payment proof received", "Preuve de paiement reçue"),
+                new LocalizedText("We're reviewing your payment — tap to track your order.",
+                        "Nous vérifions votre paiement — appuyez pour suivre votre commande."),
+                siteUrl + "/track/" + orderId);
 
         // 1 of 3 order-lifecycle SMS — the customer has now fully completed
         // checkout (payment method chosen + proof uploaded), so this is the
@@ -212,15 +216,21 @@ public class OrderService {
         String trackingUrl = siteUrl + "/track/" + orderId;
         String customerPhone = order.getCustomerInfo() != null ? order.getCustomerInfo().getPhone() : null;
         if (status == OrderStatus.VALIDATED) {
-            pushNotificationService.notifyOrder(orderId, "Payment confirmed!",
-                    "Your payment has been validated — tap to track your order.", trackingUrl);
+            pushNotificationService.notifyOrder(orderId,
+                    new LocalizedText("Payment confirmed!", "Paiement confirmé !"),
+                    new LocalizedText("Your payment has been validated — tap to track your order.",
+                            "Votre paiement a été validé — appuyez pour suivre votre commande."),
+                    trackingUrl);
             // 2 of 3 order-lifecycle SMS — sent alongside push, not instead
             // of it, since it reaches the customer even without push enabled.
             sendCustomerSms(customerPhone, "Riskyc Fashion: your order " + orderId + " has been validated! "
                     + "Track your order: " + trackingUrl);
         } else if (status == OrderStatus.CANCELLED) {
-            pushNotificationService.notifyOrder(orderId, "Order rejected",
-                    "We couldn't validate your payment — tap for details.", trackingUrl);
+            pushNotificationService.notifyOrder(orderId,
+                    new LocalizedText("Order rejected", "Commande rejetée"),
+                    new LocalizedText("We couldn't validate your payment — tap for details.",
+                            "Nous n'avons pas pu valider votre paiement — appuyez pour plus de détails."),
+                    trackingUrl);
         }
         messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
         return response;
@@ -250,8 +260,11 @@ public class OrderService {
         order.setPackagingStartedAt(Instant.now());
         OrderResponse response = toResponse(order);
         messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
-        pushNotificationService.notifyOrder(orderId, "Your order is being packaged",
-                "We've started packaging your order — tap to track it.", siteUrl + "/track/" + orderId);
+        pushNotificationService.notifyOrder(orderId,
+                new LocalizedText("Your order is being packaged", "Votre commande est en cours d'emballage"),
+                new LocalizedText("We've started packaging your order — tap to track it.",
+                        "Nous avons commencé à emballer votre commande — appuyez pour la suivre."),
+                siteUrl + "/track/" + orderId);
         return response;
     }
 
@@ -272,8 +285,11 @@ public class OrderService {
         // packaging and then sends the delivery-details/photo message
         // moments later, and two near-identical "packaged!" notifications
         // back to back reads as a bug rather than two distinct updates.
-        pushNotificationService.notifyOrder(orderId, "Your order is packaged!",
-                "We'll share your delivery details shortly — tap to track it.", siteUrl + "/track/" + orderId);
+        pushNotificationService.notifyOrder(orderId,
+                new LocalizedText("Your order is packaged!", "Votre commande est emballée !"),
+                new LocalizedText("We'll share your delivery details shortly — tap to track it.",
+                        "Nous partagerons vos informations de livraison sous peu — appuyez pour suivre votre commande."),
+                siteUrl + "/track/" + orderId);
 
         // 3 of 3 order-lifecycle SMS.
         String customerPhone = order.getCustomerInfo() != null ? order.getCustomerInfo().getPhone() : null;

@@ -9,7 +9,9 @@ import java.util.UUID;
 public record PushSubscribeRequest(
         @NotNull UUID orderId,
         @NotBlank String endpoint,
-        @NotNull Keys keys
+        @NotNull Keys keys,
+        /** "en" or "fr" — the app's active language when it subscribed. Optional; defaults to "en". */
+        String language
 ) {
     public record Keys(@NotBlank String p256dh, @NotBlank String auth) {
     }

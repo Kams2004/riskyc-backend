@@ -1,5 +1,6 @@
 package com.fashion.Riskyc.service;
 
+import com.fashion.Riskyc.dto.LocalizedText;
 import com.fashion.Riskyc.dto.request.CreateConversationRequest;
 import com.fashion.Riskyc.dto.request.SendMessageRequest;
 import com.fashion.Riskyc.dto.response.ChatMessageResponse;
@@ -50,7 +51,8 @@ public class ConversationService {
 
     private static final String CHAT_IMAGE_FOLDER = "chat";
     private static final String CHAT_VOICE_FOLDER = "chat-voice";
-    private static final String NEW_MESSAGE_TEXT = "You have a new message from support";
+    private static final LocalizedText NEW_MESSAGE_TITLE = new LocalizedText("New message from support", "Nouveau message du support");
+    private static final LocalizedText NEW_MESSAGE_TEXT = new LocalizedText("You have a new message from support", "Vous avez un nouveau message du support");
 
     @Value("${app.site.url}")
     private String siteUrl;
@@ -64,10 +66,10 @@ public class ConversationService {
      * so a conversation with no order — e.g. a plain product question asked
      * before ever ordering — has nowhere to route a push to yet.
      */
-    private void pushNewMessageForOrder(Conversation conversation, String title) {
+    private void pushNewMessageForOrder(Conversation conversation) {
         if (conversation.getOrder() == null) return;
         UUID orderId = conversation.getOrder().getId();
-        pushNotificationService.notifyOrder(orderId, title, NEW_MESSAGE_TEXT, siteUrl + "/track/" + orderId);
+        pushNotificationService.notifyOrder(orderId, NEW_MESSAGE_TITLE, NEW_MESSAGE_TEXT, siteUrl + "/track/" + orderId);
     }
 
     @Transactional(readOnly = true)
@@ -160,8 +162,11 @@ public class ConversationService {
             notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
                     "Your order has been packaged!", conversation.getId().toString());
         }
-        pushNotificationService.notifyOrder(orderId, "Your order has been packaged!",
-                "Delivery details and a picture of your sealed order are ready — tap to view.", siteUrl + "/track/" + orderId);
+        pushNotificationService.notifyOrder(orderId,
+                new LocalizedText("Your order has been packaged!", "Votre commande a été emballée !"),
+                new LocalizedText("Delivery details and a picture of your sealed order are ready — tap to view.",
+                        "Les informations de livraison et une image de votre colis scellé sont prêtes — appuyez pour voir."),
+                siteUrl + "/track/" + orderId);
         return response;
     }
 
@@ -249,9 +254,9 @@ public class ConversationService {
         } else {
             if (conversation.getCustomer() != null) {
                 notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
-                        NEW_MESSAGE_TEXT, conversation.getId().toString());
+                        NEW_MESSAGE_TEXT.en(), conversation.getId().toString());
             }
-            pushNewMessageForOrder(conversation, "New message from support");
+            pushNewMessageForOrder(conversation);
         }
 
         return response;
@@ -284,9 +289,9 @@ public class ConversationService {
         } else {
             if (conversation.getCustomer() != null) {
                 notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
-                        NEW_MESSAGE_TEXT, conversation.getId().toString());
+                        NEW_MESSAGE_TEXT.en(), conversation.getId().toString());
             }
-            pushNewMessageForOrder(conversation, "New message from support");
+            pushNewMessageForOrder(conversation);
         }
 
         return response;
@@ -320,9 +325,9 @@ public class ConversationService {
         } else {
             if (conversation.getCustomer() != null) {
                 notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
-                        NEW_MESSAGE_TEXT, conversation.getId().toString());
+                        NEW_MESSAGE_TEXT.en(), conversation.getId().toString());
             }
-            pushNewMessageForOrder(conversation, "New message from support");
+            pushNewMessageForOrder(conversation);
         }
 
         return response;

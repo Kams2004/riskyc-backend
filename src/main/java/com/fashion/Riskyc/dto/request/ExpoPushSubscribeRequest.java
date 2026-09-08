@@ -7,6 +7,8 @@ import java.util.UUID;
 
 public record ExpoPushSubscribeRequest(
         @NotNull UUID orderId,
-        @NotBlank String token
+        @NotBlank String token,
+        /** "en" or "fr" — the app's active language when it subscribed. Optional; defaults to "en". */
+        String language
 ) {
 }

@@ -7,6 +7,7 @@ import com.fashion.Riskyc.dto.response.ConversationReadStatusResponse;
 import com.fashion.Riskyc.dto.response.ConversationResponse;
 import com.fashion.Riskyc.dto.response.DeliveryContactSnapshotResponse;
 import com.fashion.Riskyc.entity.*;
+import com.fashion.Riskyc.exception.ConflictException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
 import com.fashion.Riskyc.repository.ChatMessageRepository;
 import com.fashion.Riskyc.repository.ConversationRepository;
@@ -119,6 +120,16 @@ public class ConversationService {
         Order order = orderRepository.findById(orderId).orElseThrow(() -> ResourceNotFoundException.of("Order", orderId));
         Conversation conversation = findOrCreateConversationForOrder(order);
 
+        // Sending a second one silently "replaces" what the customer sees as
+        // the confirmation (getPackagingConfirmationMessage only returns the
+        // latest packagingConfirmation=true message) — e.g. a follow-up
+        // text-only send would bury the photo. Reject it server-side, not
+        // just hide the composer client-side; deletePackagingConfirmation
+        // below is the explicit way to clear one and send a replacement.
+        if (chatMessageRepository.findFirstByConversationIdAndPackagingConfirmationTrueOrderByTimestampDesc(conversation.getId()).isPresent()) {
+            throw new ConflictException("A packaging confirmation was already sent for this order. Delete it first to send a replacement.");
+        }
+
         // A snapshot, not a live reference — a contact edited/deleted later
         // shouldn't rewrite what an already-sent confirmation showed.
         List<DeliveryContactSnapshot> deliveryContacts = deliveryContactRepository.findAllByOrderByPositionAscCreatedAtAsc()
@@ -152,6 +163,23 @@ public class ConversationService {
         pushNotificationService.notifyOrder(orderId, "Your order has been packaged!",
                 "Delivery details and a photo of your sealed order are ready — tap to view.", siteUrl + "/track/" + orderId);
         return response;
+    }
+
+    /**
+     * Removes the sent packaging confirmation (e.g. the wrong photo went
+     * out) so {@link #sendPackagingConfirmation} can be called again — the
+     * replacement still auto-attaches whatever the current delivery-contact
+     * roster is, same as the first send.
+     */
+    public void deletePackagingConfirmation(UUID orderId) {
+        Conversation conversation = conversationRepository.findByOrder_Id(orderId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Conversation for order", orderId));
+        ChatMessage message = chatMessageRepository
+                .findFirstByConversationIdAndPackagingConfirmationTrueOrderByTimestampDesc(conversation.getId())
+                .orElseThrow(() -> ResourceNotFoundException.of("Packaging confirmation for order", orderId));
+        if (message.getImageStorageKey() != null) s3MediaService.delete(message.getImageStorageKey());
+        conversation.getMessages().remove(message);
+        chatMessageRepository.delete(message);
     }
 
     /** Same match order the frontend used to use client-side (customerId first, then orderId) — now done once, server-side, so it works reliably for guests too. */

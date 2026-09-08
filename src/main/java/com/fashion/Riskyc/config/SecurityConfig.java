@@ -139,6 +139,7 @@ public class SecurityConfig {
                             .hasAuthority(P_MANAGE_TREATMENT)
                         .requestMatchers(HttpMethod.PATCH, "/api/orders/**").hasAuthority(P_MANAGE_ORDERS)
                         .requestMatchers(HttpMethod.POST, "/api/conversations/order/*/packaging-confirmation").hasAuthority(P_SEND_PACKAGING_MESSAGE)
+                        .requestMatchers(HttpMethod.DELETE, "/api/conversations/order/*/packaging-confirmation").hasAuthority(P_SEND_PACKAGING_MESSAGE)
 
                         // ── Delivery team contacts (attached automatically to packaging-confirmation messages) ──
                         // Viewing stays open to anyone who can see Treatment/Packing (they

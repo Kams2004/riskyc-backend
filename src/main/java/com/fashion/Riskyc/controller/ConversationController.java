@@ -51,7 +51,7 @@ public class ConversationController {
         return response != null ? ResponseEntity.ok(response) : ResponseEntity.noContent().build();
     }
 
-    /** Admin-only: sends the "your order has been packaged" confirmation — text and/or a photo, with the delivery team's contact info appended automatically. */
+    /** Admin-only: sends the "your order has been packaged" confirmation — text and/or a photo, with the delivery team's contact info appended automatically. Rejects with 409 if one was already sent for this order. */
     @PostMapping("/order/{orderId}/packaging-confirmation")
     public ChatMessageResponse sendPackagingConfirmation(
             @PathVariable UUID orderId,
@@ -59,6 +59,13 @@ public class ConversationController {
             @RequestParam(value = "file", required = false) MultipartFile file
     ) {
         return conversationService.sendPackagingConfirmation(orderId, text, file);
+    }
+
+    /** Admin-only: clears the sent packaging confirmation so a replacement can be sent (e.g. the wrong photo went out). */
+    @DeleteMapping("/order/{orderId}/packaging-confirmation")
+    public ResponseEntity<Void> deletePackagingConfirmation(@PathVariable UUID orderId) {
+        conversationService.deletePackagingConfirmation(orderId);
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping

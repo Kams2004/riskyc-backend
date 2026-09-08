@@ -3,6 +3,7 @@ package com.fashion.Riskyc.config;
 import com.fashion.Riskyc.entity.*;
 import com.fashion.Riskyc.repository.AdminUserRepository;
 import com.fashion.Riskyc.repository.CategoryRepository;
+import com.fashion.Riskyc.repository.DeliveryContactRepository;
 import com.fashion.Riskyc.repository.RoleRepository;
 import com.fashion.Riskyc.repository.SubcategoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -35,6 +36,7 @@ public class DataSeeder implements CommandLineRunner {
     private final SubcategoryRepository subcategoryRepository;
     private final RoleRepository roleRepository;
     private final AdminUserRepository adminUserRepository;
+    private final DeliveryContactRepository deliveryContactRepository;
     private final PasswordEncoder passwordEncoder;
     private final DataSource dataSource;
 
@@ -46,6 +48,7 @@ public class DataSeeder implements CommandLineRunner {
         seedCategories();
         Role superAdminRole = seedRoles();
         seedAdminUser(superAdminRole);
+        seedDeliveryContacts();
         backfillManagePermissionsImplyView();
         backfillSuperAdminHasAllPermissions();
         backfillMalformedCategorySlugs();
@@ -259,5 +262,14 @@ public class DataSeeder implements CommandLineRunner {
                 .status(AccountStatus.ACTIVE)
                 .build());
         log.info("Seeded default admin user (admin@riskyc.com)");
+    }
+
+    /** The delivery team's own numbers, used from day one — editable later from Delivery Agents. */
+    private void seedDeliveryContacts() {
+        if (deliveryContactRepository.count() > 0) return;
+        deliveryContactRepository.save(DeliveryContact.builder().name("Delivery Agent 1").phone("673019577").position(0).build());
+        deliveryContactRepository.save(DeliveryContact.builder().name("Delivery Agent 2").phone("650723428").position(1).build());
+        deliveryContactRepository.save(DeliveryContact.builder().name("Delivery Agent 3").phone("655233862").position(2).build());
+        log.info("Seeded default delivery contacts");
     }
 }

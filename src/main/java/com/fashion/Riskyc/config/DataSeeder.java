@@ -47,6 +47,7 @@ public class DataSeeder implements CommandLineRunner {
         Role superAdminRole = seedRoles();
         seedAdminUser(superAdminRole);
         backfillManagePermissionsImplyView();
+        backfillSuperAdminHasAllPermissions();
         backfillMalformedCategorySlugs();
     }
 
@@ -109,6 +110,28 @@ public class DataSeeder implements CommandLineRunner {
                 log.info("Backfilled implied View permissions for role '{}'", role.getName());
             }
         }
+    }
+
+    /**
+     * The "Super Admin" role is seeded once, on an empty DB, with whatever
+     * {@code Permission.values()} held at that moment — a permission added
+     * later (like {@link Permission#MANAGE_DELIVERY_AGENTS}) never reaches
+     * an already-existing installation's Super Admin role on its own, and
+     * the frontend's {@code isSuperAdmin()} check (has every known
+     * permission) would then start reporting the real super admin as not
+     * one. Runs on every boot; a no-op once the role already has everything.
+     */
+    private void backfillSuperAdminHasAllPermissions() {
+        roleRepository.findAll().stream()
+                .filter(role -> "Super Admin".equals(role.getName()))
+                .forEach(role -> {
+                    Set<Permission> permissions = new HashSet<>(role.getPermissions());
+                    if (permissions.addAll(Set.of(Permission.values()))) {
+                        role.setPermissions(permissions);
+                        roleRepository.save(role);
+                        log.info("Backfilled missing permissions onto Super Admin role");
+                    }
+                });
     }
 
     /**

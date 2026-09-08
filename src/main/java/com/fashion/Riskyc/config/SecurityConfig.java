@@ -47,6 +47,7 @@ public class SecurityConfig {
     private static final String P_VIEW_TREATMENT = "PERM_VIEW_TREATMENT";
     private static final String P_MANAGE_TREATMENT = "PERM_MANAGE_TREATMENT";
     private static final String P_SEND_PACKAGING_MESSAGE = "PERM_SEND_PACKAGING_MESSAGE";
+    private static final String P_MANAGE_DELIVERY_AGENTS = "PERM_MANAGE_DELIVERY_AGENTS";
     private static final String P_VIEW_CUSTOMERS = "PERM_VIEW_CUSTOMERS";
     private static final String P_MANAGE_CUSTOMERS = "PERM_MANAGE_CUSTOMERS";
     private static final String P_VIEW_USERS = "PERM_VIEW_USERS";
@@ -140,10 +141,13 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/conversations/order/*/packaging-confirmation").hasAuthority(P_SEND_PACKAGING_MESSAGE)
 
                         // ── Delivery team contacts (attached automatically to packaging-confirmation messages) ──
+                        // Viewing stays open to anyone who can see Treatment/Packing (they
+                        // need to know who's on the roster); editing the roster itself is a
+                        // separate, narrower permission reserved for the super admin by default.
                         .requestMatchers(HttpMethod.GET, "/api/delivery-contacts").hasAuthority(P_VIEW_TREATMENT)
-                        .requestMatchers(HttpMethod.POST, "/api/delivery-contacts").hasAuthority(P_MANAGE_TREATMENT)
-                        .requestMatchers(HttpMethod.PUT, "/api/delivery-contacts/**").hasAuthority(P_MANAGE_TREATMENT)
-                        .requestMatchers(HttpMethod.DELETE, "/api/delivery-contacts/**").hasAuthority(P_MANAGE_TREATMENT)
+                        .requestMatchers(HttpMethod.POST, "/api/delivery-contacts").hasAuthority(P_MANAGE_DELIVERY_AGENTS)
+                        .requestMatchers(HttpMethod.PUT, "/api/delivery-contacts/**").hasAuthority(P_MANAGE_DELIVERY_AGENTS)
+                        .requestMatchers(HttpMethod.DELETE, "/api/delivery-contacts/**").hasAuthority(P_MANAGE_DELIVERY_AGENTS)
 
                         // ── Customers (admin management) ──
                         .requestMatchers(HttpMethod.GET, "/api/customers").hasAuthority(P_VIEW_CUSTOMERS)

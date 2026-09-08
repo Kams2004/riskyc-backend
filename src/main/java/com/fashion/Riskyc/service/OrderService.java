@@ -233,7 +233,11 @@ public class OrderService {
      * overwriting who's doing the work.
      */
     public OrderResponse startPackaging(UUID orderId) {
-        Order order = getOrThrow(orderId);
+        // Locked, not a plain findById — without the lock, two admins
+        // tapping "Start Packaging" at the same moment can both read
+        // VALIDATED before either commits, and both would proceed instead
+        // of the second one correctly losing the race below.
+        Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow(() -> ResourceNotFoundException.of("Order", orderId));
         if (order.getStatus() != OrderStatus.VALIDATED) {
             if (order.getStatus() == OrderStatus.PACKAGING) {
                 throw new ConflictException("Already being packaged by " + order.getPackagingStartedByName());

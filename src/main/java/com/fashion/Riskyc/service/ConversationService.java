@@ -161,7 +161,7 @@ public class ConversationService {
                     "Your order has been packaged!", conversation.getId().toString());
         }
         pushNotificationService.notifyOrder(orderId, "Your order has been packaged!",
-                "Delivery details and a photo of your sealed order are ready — tap to view.", siteUrl + "/track/" + orderId);
+                "Delivery details and a picture of your sealed order are ready — tap to view.", siteUrl + "/track/" + orderId);
         return response;
     }
 
@@ -280,7 +280,7 @@ public class ConversationService {
 
         if (sender == MessageSender.CUSTOMER) {
             notificationService.notifyAdmin(NotificationType.NEW_MESSAGE,
-                    conversation.getCustomerName() + " sent a photo", conversation.getId().toString());
+                    conversation.getCustomerName() + " sent a picture", conversation.getId().toString());
         } else {
             if (conversation.getCustomer() != null) {
                 notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,

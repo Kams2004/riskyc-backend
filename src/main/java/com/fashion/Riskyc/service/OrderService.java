@@ -267,8 +267,13 @@ public class OrderService {
         order.setPackagingCompletedAt(Instant.now());
         OrderResponse response = toResponse(order);
         messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
-        pushNotificationService.notifyOrder(orderId, "Your order has been packaged!",
-                "Your order is packaged and ready — tap to see the details.", siteUrl + "/track/" + orderId);
+        // Deliberately worded differently from ConversationService's
+        // sendPackagingConfirmation push below — an admin normally finishes
+        // packaging and then sends the delivery-details/photo message
+        // moments later, and two near-identical "packaged!" notifications
+        // back to back reads as a bug rather than two distinct updates.
+        pushNotificationService.notifyOrder(orderId, "Your order is packaged!",
+                "We'll share your delivery details shortly — tap to track it.", siteUrl + "/track/" + orderId);
 
         // 3 of 3 order-lifecycle SMS.
         String customerPhone = order.getCustomerInfo() != null ? order.getCustomerInfo().getPhone() : null;

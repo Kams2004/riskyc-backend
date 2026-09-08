@@ -15,6 +15,7 @@ import com.fashion.Riskyc.repository.DeliveryContactRepository;
 import com.fashion.Riskyc.repository.OrderRepository;
 import com.fashion.Riskyc.security.CurrentAdmin;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -44,9 +45,29 @@ public class ConversationService {
     private final SimpMessagingTemplate messagingTemplate;
     private final NotificationService notificationService;
     private final S3MediaService s3MediaService;
+    private final PushNotificationService pushNotificationService;
 
     private static final String CHAT_IMAGE_FOLDER = "chat";
     private static final String CHAT_VOICE_FOLDER = "chat-voice";
+    private static final String NEW_MESSAGE_TEXT = "You have a new message from support";
+
+    @Value("${app.site.url}")
+    private String siteUrl;
+
+    /**
+     * OS-level push (not just the in-app WebSocket toast notifyCustomer sends,
+     * which the mobile app doesn't even listen for — see ChatBlob's own doc
+     * comment on why it polls instead). Only reachable when this conversation
+     * is tied to an order: push subscriptions have no "logged-in customer"
+     * concept, only "device watching this order" (see PushNotificationService),
+     * so a conversation with no order — e.g. a plain product question asked
+     * before ever ordering — has nowhere to route a push to yet.
+     */
+    private void pushNewMessageForOrder(Conversation conversation, String title) {
+        if (conversation.getOrder() == null) return;
+        UUID orderId = conversation.getOrder().getId();
+        pushNotificationService.notifyOrder(orderId, title, NEW_MESSAGE_TEXT, siteUrl + "/track/" + orderId);
+    }
 
     @Transactional(readOnly = true)
     public List<ConversationResponse> listAll() {
@@ -128,6 +149,8 @@ public class ConversationService {
             notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
                     "Your order has been packaged!", conversation.getId().toString());
         }
+        pushNotificationService.notifyOrder(orderId, "Your order has been packaged!",
+                "Delivery details and a photo of your sealed order are ready — tap to view.", siteUrl + "/track/" + orderId);
         return response;
     }
 
@@ -195,9 +218,12 @@ public class ConversationService {
         if (request.sender() == MessageSender.CUSTOMER) {
             notificationService.notifyAdmin(NotificationType.NEW_MESSAGE,
                     conversation.getCustomerName() + " sent a new message", conversation.getId().toString());
-        } else if (conversation.getCustomer() != null) {
-            notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
-                    "You have a new message from support", conversation.getId().toString());
+        } else {
+            if (conversation.getCustomer() != null) {
+                notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
+                        NEW_MESSAGE_TEXT, conversation.getId().toString());
+            }
+            pushNewMessageForOrder(conversation, "New message from support");
         }
 
         return response;
@@ -227,9 +253,12 @@ public class ConversationService {
         if (sender == MessageSender.CUSTOMER) {
             notificationService.notifyAdmin(NotificationType.NEW_MESSAGE,
                     conversation.getCustomerName() + " sent a photo", conversation.getId().toString());
-        } else if (conversation.getCustomer() != null) {
-            notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
-                    "You have a new message from support", conversation.getId().toString());
+        } else {
+            if (conversation.getCustomer() != null) {
+                notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
+                        NEW_MESSAGE_TEXT, conversation.getId().toString());
+            }
+            pushNewMessageForOrder(conversation, "New message from support");
         }
 
         return response;
@@ -260,9 +289,12 @@ public class ConversationService {
         if (sender == MessageSender.CUSTOMER) {
             notificationService.notifyAdmin(NotificationType.NEW_MESSAGE,
                     conversation.getCustomerName() + " sent a voice message", conversation.getId().toString());
-        } else if (conversation.getCustomer() != null) {
-            notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
-                    "You have a new message from support", conversation.getId().toString());
+        } else {
+            if (conversation.getCustomer() != null) {
+                notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
+                        NEW_MESSAGE_TEXT, conversation.getId().toString());
+            }
+            pushNewMessageForOrder(conversation, "New message from support");
         }
 
         return response;

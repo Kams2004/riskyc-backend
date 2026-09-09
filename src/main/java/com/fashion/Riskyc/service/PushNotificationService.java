@@ -94,6 +94,7 @@ public class PushNotificationService {
                 int status = response.getStatusLine().getStatusCode();
                 if (status == 404 || status == 410) {
                     // The browser unsubscribed or the subscription expired — stop trying it.
+                    log.info("Push subscription for order {} returned {} — deleting (endpoint {})", orderId, status, sub.getEndpoint());
                     pushSubscriptionRepository.delete(sub);
                 } else if (status >= 300) {
                     log.warn("Push send to {} returned status {}", sub.getEndpoint(), status);
@@ -130,6 +131,7 @@ public class PushNotificationService {
                     Object errType = errDetails instanceof Map<?, ?> d ? d.get("error") : null;
                     if ("DeviceNotRegistered".equals(errType)) {
                         // The app was uninstalled or the token otherwise expired — stop trying it.
+                        log.info("Expo push token for order {} is DeviceNotRegistered — deleting (token {})", orderId, token.getToken());
                         expoPushTokenRepository.delete(token);
                     } else {
                         log.warn("Expo push to order {} returned error: {}", orderId, data);

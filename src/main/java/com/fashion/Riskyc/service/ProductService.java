@@ -1,9 +1,9 @@
 package com.fashion.Riskyc.service;
 
-import com.fashion.Riskyc.dto.request.ProductColorRequest;
-import com.fashion.Riskyc.dto.request.ProductRequest;
+import com.fashion.Riskyc.dto.request.*;
 import com.fashion.Riskyc.dto.response.BulkPriceTierResponse;
 import com.fashion.Riskyc.dto.response.MediaResponse;
+import com.fashion.Riskyc.dto.response.ProductAuditLogResponse;
 import com.fashion.Riskyc.dto.response.ProductColorResponse;
 import com.fashion.Riskyc.dto.response.ProductResponse;
 import com.fashion.Riskyc.entity.*;
@@ -11,6 +11,7 @@ import com.fashion.Riskyc.exception.BadRequestException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
 import com.fashion.Riskyc.repository.CategoryRepository;
 import com.fashion.Riskyc.repository.OrderItemRepository;
+import com.fashion.Riskyc.repository.ProductAuditLogRepository;
 import com.fashion.Riskyc.repository.ProductMediaRepository;
 import com.fashion.Riskyc.repository.ProductRepository;
 import com.fashion.Riskyc.repository.SubcategoryRepository;
@@ -22,7 +23,12 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 import com.fashion.Riskyc.security.CurrentAdmin;
 
+import java.math.BigDecimal;
+import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.Objects;
 import java.util.UUID;
 
 /**
@@ -44,6 +50,7 @@ public class ProductService {
 
     private final ProductRepository productRepository;
     private final ProductMediaRepository productMediaRepository;
+    private final ProductAuditLogRepository productAuditLogRepository;
     private final CategoryRepository categoryRepository;
     private final SubcategoryRepository subcategoryRepository;
     private final OrderItemRepository orderItemRepository;
@@ -82,12 +89,16 @@ public class ProductService {
         applyRequest(product, request);
         // Flush so @CreationTimestamp/@UpdateTimestamp are populated before we
         // serialize the response (they're set by Hibernate at flush time).
-        return toResponse(productRepository.saveAndFlush(product));
+        Product saved = productRepository.saveAndFlush(product);
+        logAudit(saved, ProductAuditSection.CREATED, "Created the product");
+        return toResponse(saved);
     }
 
+    /** Legacy full-replace — kept for a full MANAGE_PRODUCTS admin submitting every section at once. */
     public ProductResponse update(UUID id, ProductRequest request) {
         Product product = getOrThrow(id);
         applyRequest(product, request);
+        logAudit(product, ProductAuditSection.INFO, "Updated the product (full save)");
         return toResponse(product);
     }
 
@@ -99,13 +110,155 @@ public class ProductService {
         // live product row.
         orderItemRepository.detachProduct(id);
         product.getMedia().forEach(m -> s3MediaService.delete(m.getStorageKey()));
+        logAudit(product, ProductAuditSection.DELETED, "Deleted the product");
         productRepository.delete(product);
     }
 
     public ProductResponse setHidden(UUID id, boolean hidden) {
         Product product = getOrThrow(id);
-        product.setHidden(hidden);
+        if (product.isHidden() != hidden) {
+            product.setHidden(hidden);
+            logAudit(product, ProductAuditSection.VISIBILITY, hidden ? "Hid the product" : "Made the product visible");
+        }
         return toResponse(product);
+    }
+
+    public ProductResponse updateInfo(UUID id, ProductInfoRequest request) {
+        Product product = getOrThrow(id);
+        List<String> changed = new ArrayList<>();
+
+        if (!Objects.equals(product.getName(), request.name())) {
+            changed.add("name to \"" + request.name() + "\"");
+            product.setName(request.name());
+            product.setNameFr(translationService.translateToFrench(request.name()));
+        }
+        if (!Objects.equals(product.getDescription(), request.description())) {
+            changed.add("description");
+            product.setDescription(request.description());
+            product.setDescriptionFr(translationService.translateToFrench(request.description()));
+        }
+
+        Category category = resolveCategory(request.categorySlug());
+        Subcategory subcategory = resolveSubcategory(category, request.subcategorySlug());
+        boolean categoryChanged = product.getCategory() == null || !Objects.equals(product.getCategory().getSlug(), category.getSlug());
+        boolean subcategoryChanged = !Objects.equals(
+                product.getSubcategory() != null ? product.getSubcategory().getSlug() : null,
+                subcategory != null ? subcategory.getSlug() : null);
+        if (categoryChanged || subcategoryChanged) {
+            changed.add("category to \"" + category.getSlug() + (subcategory != null ? "/" + subcategory.getSlug() : "") + "\"");
+        }
+        product.setCategory(category);
+        product.setSubcategory(subcategory);
+
+        if (!changed.isEmpty()) {
+            logAudit(product, ProductAuditSection.INFO, "Changed " + String.join(", ", changed));
+        }
+        return toResponse(product);
+    }
+
+    public ProductResponse updatePricing(UUID id, ProductPricingRequest request) {
+        Product product = getOrThrow(id);
+        List<String> changed = new ArrayList<>();
+
+        BigDecimal newPrice = request.price() != null ? request.price() : BigDecimal.ZERO;
+        if (product.getPrice().compareTo(newPrice) != 0) {
+            changed.add("price from " + formatAmount(product.getPrice()) + " to " + formatAmount(newPrice) + " XAF");
+            product.setPrice(newPrice);
+        }
+        BigDecimal oldOriginal = product.getOriginalPrice();
+        if (!Objects.equals(oldOriginal, request.originalPrice())) {
+            changed.add("original price to " + (request.originalPrice() != null ? formatAmount(request.originalPrice()) + " XAF" : "none"));
+            product.setOriginalPrice(request.originalPrice());
+        }
+
+        int oldTierCount = product.getBulkPrices().size();
+        product.getBulkPrices().clear();
+        if (request.bulkPrices() != null) {
+            request.bulkPrices().stream()
+                    .sorted(java.util.Comparator.comparingInt(BulkPriceTierRequest::quantity))
+                    .forEach(tierReq -> product.getBulkPrices().add(new BulkPriceTier(tierReq.quantity(), tierReq.price())));
+        }
+        if (oldTierCount != product.getBulkPrices().size()) {
+            changed.add("bulk-price tiers (" + oldTierCount + " → " + product.getBulkPrices().size() + ")");
+        }
+
+        if (!changed.isEmpty()) {
+            logAudit(product, ProductAuditSection.PRICING, "Changed " + String.join(", ", changed));
+        }
+        return toResponse(product);
+    }
+
+    public ProductResponse updateColors(UUID id, ProductColorsRequest request) {
+        Product product = getOrThrow(id);
+        List<String> before = product.getColors().stream().map(ProductColor::getName).sorted().toList();
+        mergeColors(product, request.colors(), false);
+        List<String> after = product.getColors().stream().map(ProductColor::getName).sorted().toList();
+        if (!before.equals(after)) {
+            logAudit(product, ProductAuditSection.COLORS, "Changed colors (" + before.size() + " → " + after.size() + ")");
+        }
+        return toResponse(product);
+    }
+
+    /** Updates only the stock count of existing color entries — never adds, removes, or renames one. */
+    public ProductResponse updateStock(UUID id, ProductStockRequest request) {
+        Product product = getOrThrow(id);
+        Map<UUID, ProductColor> byId = new LinkedHashMap<>();
+        for (ProductColor c : product.getColors()) {
+            byId.put(c.getId(), c);
+        }
+        List<String> changed = new ArrayList<>();
+        if (request.colors() != null) {
+            for (ProductStockEntryRequest entry : request.colors()) {
+                ProductColor color = byId.get(entry.id());
+                if (color == null) continue; // Unknown/removed color — nothing to update.
+                if (!Objects.equals(color.getStock(), entry.stock())) {
+                    changed.add(color.getName() + " to " + (entry.stock() != null ? entry.stock() : "untracked"));
+                    color.setStock(entry.stock());
+                }
+            }
+        }
+        if (!changed.isEmpty()) {
+            logAudit(product, ProductAuditSection.STOCK, "Set stock: " + String.join(", ", changed));
+        }
+        return toResponse(product);
+    }
+
+    public ProductResponse updateDisplay(UUID id, ProductDisplayRequest request) {
+        Product product = getOrThrow(id);
+        List<String> changed = new ArrayList<>();
+
+        if (product.getBadge() != request.badge()) {
+            changed.add("badge");
+            product.setBadge(request.badge());
+        }
+        List<String> newSizes = request.sizes() != null ? request.sizes() : List.of();
+        if (!product.getSizes().equals(newSizes)) {
+            changed.add("sizes");
+            product.setSizes(newSizes);
+        }
+        if (request.rating() != null && !Objects.equals(product.getRating(), request.rating())) {
+            changed.add("rating");
+            product.setRating(request.rating());
+        }
+        if (request.reviews() != null && !Objects.equals(product.getReviews(), request.reviews())) {
+            changed.add("review count");
+            product.setReviews(request.reviews());
+        }
+
+        if (!changed.isEmpty()) {
+            logAudit(product, ProductAuditSection.DISPLAY, "Changed " + String.join(", ", changed));
+        }
+        return toResponse(product);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ProductAuditLogResponse> getAuditLog(UUID productId, Pageable pageable) {
+        return productAuditLogRepository.findByProductIdOrderByChangedAtDesc(productId, pageable).map(this::toAuditResponse);
+    }
+
+    @Transactional(readOnly = true)
+    public Page<ProductAuditLogResponse> getAllAuditLog(Pageable pageable) {
+        return productAuditLogRepository.findAllByOrderByChangedAtDesc(pageable).map(this::toAuditResponse);
     }
 
     public MediaResponse addMedia(UUID productId, MultipartFile file) {
@@ -120,6 +273,7 @@ public class ProductService {
                 .product(product)
                 .build());
         product.getMedia().add(media);
+        logAudit(product, ProductAuditSection.IMAGES, "Added a picture");
         return toMediaResponse(media);
     }
 
@@ -127,20 +281,16 @@ public class ProductService {
         ProductMedia media = productMediaRepository.findById(mediaId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Media", mediaId));
         s3MediaService.delete(media.getStorageKey());
+        Product product = media.getProduct();
         productMediaRepository.delete(media);
+        if (product != null) {
+            logAudit(product, ProductAuditSection.IMAGES, "Removed a picture");
+        }
     }
 
     private void applyRequest(Product product, ProductRequest request) {
-        Category category = categoryRepository.findBySlug(request.categorySlug())
-                .orElseThrow(() -> new BadRequestException("Unknown category: " + request.categorySlug()));
-        Subcategory subcategory = null;
-        if (request.subcategorySlug() != null && !request.subcategorySlug().isBlank()) {
-            subcategory = category.getSubcategories().stream()
-                    .filter(s -> s.getSlug().equals(request.subcategorySlug()))
-                    .findFirst()
-                    .orElseThrow(() -> new BadRequestException(
-                            "Unknown subcategory '" + request.subcategorySlug() + "' for category '" + request.categorySlug() + "'"));
-        }
+        Category category = resolveCategory(request.categorySlug());
+        Subcategory subcategory = resolveSubcategory(category, request.subcategorySlug());
 
         String previousName = product.getName();
         String previousDescription = product.getDescription();
@@ -149,13 +299,13 @@ public class ProductService {
         // Only re-translate when the source text actually changed — an
         // admin re-saving the same product otherwise costs a Translate API
         // call for nothing.
-        if (!java.util.Objects.equals(previousName, request.name())) {
+        if (!Objects.equals(previousName, request.name())) {
             product.setNameFr(translationService.translateToFrench(request.name()));
         }
-        if (!java.util.Objects.equals(previousDescription, request.description())) {
+        if (!Objects.equals(previousDescription, request.description())) {
             product.setDescriptionFr(translationService.translateToFrench(request.description()));
         }
-        product.setPrice(request.price() != null ? request.price() : java.math.BigDecimal.ZERO);
+        product.setPrice(request.price() != null ? request.price() : BigDecimal.ZERO);
         product.setOriginalPrice(request.originalPrice());
         product.setCategory(category);
         product.setSubcategory(subcategory);
@@ -172,25 +322,86 @@ public class ProductService {
             product.setReviews(request.reviews());
         }
 
-        product.getColors().clear();
-        if (request.colors() != null) {
-            for (ProductColorRequest colorReq : request.colors()) {
-                product.getColors().add(ProductColor.builder()
-                        .name(colorReq.name())
-                        .hex(colorReq.hex())
-                        .stock(colorReq.stock())
-                        .product(product)
-                        .build());
-            }
-        }
+        mergeColors(product, request.colors(), true);
 
         product.getBulkPrices().clear();
         if (request.bulkPrices() != null) {
             request.bulkPrices().stream()
-                    .sorted(java.util.Comparator.comparingInt(com.fashion.Riskyc.dto.request.BulkPriceTierRequest::quantity))
-                    .forEach(tierReq -> product.getBulkPrices().add(
-                            new BulkPriceTier(tierReq.quantity(), tierReq.price())));
+                    .sorted(java.util.Comparator.comparingInt(BulkPriceTierRequest::quantity))
+                    .forEach(tierReq -> product.getBulkPrices().add(new BulkPriceTier(tierReq.quantity(), tierReq.price())));
         }
+    }
+
+    /**
+     * Matches incoming color entries against the product's existing ones by
+     * id so an update in place preserves the row (and, when {@code
+     * applyStock} is false, its current stock — used by the colors-only
+     * section endpoint, which isn't allowed to touch stock). An entry with
+     * no id (or one that doesn't match anything existing) becomes a new
+     * color; any existing color absent from the incoming list is dropped
+     * (orphanRemoval on {@link Product#getColors()} handles the delete).
+     */
+    private void mergeColors(Product product, List<ProductColorRequest> requested, boolean applyStock) {
+        Map<UUID, ProductColor> existingById = new LinkedHashMap<>();
+        for (ProductColor c : product.getColors()) {
+            if (c.getId() != null) {
+                existingById.put(c.getId(), c);
+            }
+        }
+        List<ProductColor> merged = new ArrayList<>();
+        if (requested != null) {
+            for (ProductColorRequest req : requested) {
+                ProductColor color = req.id() != null ? existingById.remove(req.id()) : null;
+                if (color == null) {
+                    color = ProductColor.builder().product(product).build();
+                }
+                color.setName(req.name());
+                color.setHex(req.hex());
+                if (applyStock) {
+                    color.setStock(req.stock());
+                }
+                merged.add(color);
+            }
+        }
+        product.getColors().clear();
+        product.getColors().addAll(merged);
+    }
+
+    private Category resolveCategory(String categorySlug) {
+        return categoryRepository.findBySlug(categorySlug)
+                .orElseThrow(() -> new BadRequestException("Unknown category: " + categorySlug));
+    }
+
+    private Subcategory resolveSubcategory(Category category, String subcategorySlug) {
+        if (subcategorySlug == null || subcategorySlug.isBlank()) {
+            return null;
+        }
+        return category.getSubcategories().stream()
+                .filter(s -> s.getSlug().equals(subcategorySlug))
+                .findFirst()
+                .orElseThrow(() -> new BadRequestException(
+                        "Unknown subcategory '" + subcategorySlug + "' for category '" + category.getSlug() + "'"));
+    }
+
+    private void logAudit(Product product, ProductAuditSection section, String summary) {
+        productAuditLogRepository.save(ProductAuditLog.builder()
+                .productId(product.getId())
+                .productName(product.getName())
+                .section(section)
+                .summary(summary)
+                .changedByName(CurrentAdmin.nameOrNull())
+                .changedById(CurrentAdmin.idOrNull())
+                .build());
+    }
+
+    private ProductAuditLogResponse toAuditResponse(ProductAuditLog log) {
+        return new ProductAuditLogResponse(
+                log.getId(), log.getProductId(), log.getProductName(),
+                log.getSection().name(), log.getSummary(), log.getChangedByName(), log.getChangedAt());
+    }
+
+    private String formatAmount(BigDecimal amount) {
+        return amount.stripTrailingZeros().toPlainString();
     }
 
     private Product getOrThrow(UUID id) {

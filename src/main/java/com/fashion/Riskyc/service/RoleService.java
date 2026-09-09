@@ -83,6 +83,26 @@ public class RoleService {
         if (permissions.contains(Permission.MANAGE_ORDERS) || permissions.contains(Permission.MANAGE_TREATMENT)) {
             permissions.add(Permission.SEND_PACKAGING_MESSAGE);
         }
+        // MANAGE_PRODUCTS is the "full access" product permission — it implies
+        // every section-scoped one below it, so existing roles that already
+        // have it keep working exactly as before with no reconfiguration.
+        if (permissions.contains(Permission.MANAGE_PRODUCTS)) {
+            permissions.addAll(Set.of(
+                    Permission.CREATE_PRODUCT, Permission.DELETE_PRODUCT,
+                    Permission.UPDATE_PRODUCT_INFO, Permission.UPDATE_PRODUCT_PRICING, Permission.UPDATE_PRODUCT_IMAGES,
+                    Permission.UPDATE_PRODUCT_COLORS, Permission.UPDATE_PRODUCT_STOCK,
+                    Permission.UPDATE_PRODUCT_DISPLAY, Permission.UPDATE_PRODUCT_VISIBILITY));
+        }
+        // Any of the section-scoped product permissions is useless without
+        // being able to see the product to act on it in the first place.
+        Set<Permission> productSectionPermissions = Set.of(
+                Permission.CREATE_PRODUCT, Permission.DELETE_PRODUCT,
+                Permission.UPDATE_PRODUCT_INFO, Permission.UPDATE_PRODUCT_PRICING, Permission.UPDATE_PRODUCT_IMAGES,
+                Permission.UPDATE_PRODUCT_COLORS, Permission.UPDATE_PRODUCT_STOCK,
+                Permission.UPDATE_PRODUCT_DISPLAY, Permission.UPDATE_PRODUCT_VISIBILITY);
+        if (!java.util.Collections.disjoint(permissions, productSectionPermissions)) {
+            permissions.add(Permission.VIEW_PRODUCTS);
+        }
         return permissions;
     }
 

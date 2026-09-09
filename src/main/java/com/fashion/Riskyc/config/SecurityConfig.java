@@ -40,6 +40,15 @@ public class SecurityConfig {
 
     private static final String P_VIEW_PRODUCTS = "PERM_VIEW_PRODUCTS";
     private static final String P_MANAGE_PRODUCTS = "PERM_MANAGE_PRODUCTS";
+    private static final String P_CREATE_PRODUCT = "PERM_CREATE_PRODUCT";
+    private static final String P_DELETE_PRODUCT = "PERM_DELETE_PRODUCT";
+    private static final String P_UPDATE_PRODUCT_INFO = "PERM_UPDATE_PRODUCT_INFO";
+    private static final String P_UPDATE_PRODUCT_PRICING = "PERM_UPDATE_PRODUCT_PRICING";
+    private static final String P_UPDATE_PRODUCT_IMAGES = "PERM_UPDATE_PRODUCT_IMAGES";
+    private static final String P_UPDATE_PRODUCT_COLORS = "PERM_UPDATE_PRODUCT_COLORS";
+    private static final String P_UPDATE_PRODUCT_STOCK = "PERM_UPDATE_PRODUCT_STOCK";
+    private static final String P_UPDATE_PRODUCT_DISPLAY = "PERM_UPDATE_PRODUCT_DISPLAY";
+    private static final String P_UPDATE_PRODUCT_VISIBILITY = "PERM_UPDATE_PRODUCT_VISIBILITY";
     private static final String P_VIEW_CATEGORIES = "PERM_VIEW_CATEGORIES";
     private static final String P_MANAGE_CATEGORIES = "PERM_MANAGE_CATEGORIES";
     private static final String P_VIEW_ORDERS = "PERM_VIEW_ORDERS";
@@ -100,6 +109,26 @@ public class SecurityConfig {
                         // match "/api/products/admin" (a path variable matches any segment,
                         // including the literal "admin") and make it public by accident.
                         .requestMatchers(HttpMethod.GET, "/api/products/admin").hasAuthority(P_VIEW_PRODUCTS)
+                        // Same "declared before /api/products/{id}" requirement as /admin above.
+                        .requestMatchers(HttpMethod.GET, "/api/products/audit-log").hasAuthority(P_MANAGE_PRODUCTS)
+                        .requestMatchers(HttpMethod.GET, "/api/products/*/audit-log").hasAuthority(P_MANAGE_PRODUCTS)
+
+                        // Section-scoped product updates — each declared before the generic
+                        // POST|PUT|PATCH|DELETE /api/products/** fallback rules below, same
+                        // first-match-wins ordering already used for packaging vs. orders.
+                        .requestMatchers(HttpMethod.POST, "/api/products").hasAuthority(P_CREATE_PRODUCT)
+                        .requestMatchers(HttpMethod.DELETE, "/api/products/*").hasAuthority(P_DELETE_PRODUCT)
+                        .requestMatchers(HttpMethod.PATCH, "/api/products/*/info").hasAuthority(P_UPDATE_PRODUCT_INFO)
+                        .requestMatchers(HttpMethod.PATCH, "/api/products/*/pricing").hasAuthority(P_UPDATE_PRODUCT_PRICING)
+                        .requestMatchers(HttpMethod.POST, "/api/products/*/media").hasAuthority(P_UPDATE_PRODUCT_IMAGES)
+                        .requestMatchers(HttpMethod.DELETE, "/api/media/**").hasAuthority(P_UPDATE_PRODUCT_IMAGES)
+                        .requestMatchers(HttpMethod.PATCH, "/api/products/*/colors").hasAuthority(P_UPDATE_PRODUCT_COLORS)
+                        .requestMatchers(HttpMethod.PATCH, "/api/products/*/stock").hasAuthority(P_UPDATE_PRODUCT_STOCK)
+                        .requestMatchers(HttpMethod.PATCH, "/api/products/*/display").hasAuthority(P_UPDATE_PRODUCT_DISPLAY)
+                        .requestMatchers(HttpMethod.PATCH, "/api/products/*/visibility").hasAuthority(P_UPDATE_PRODUCT_VISIBILITY)
+
+                        // Fallback — the legacy full-replace PUT (and anything else under
+                        // /api/products/**) stays reserved for full access.
                         .requestMatchers(HttpMethod.POST, "/api/products/**").hasAuthority(P_MANAGE_PRODUCTS)
                         .requestMatchers(HttpMethod.PUT, "/api/products/**").hasAuthority(P_MANAGE_PRODUCTS)
                         .requestMatchers(HttpMethod.PATCH, "/api/products/**").hasAuthority(P_MANAGE_PRODUCTS)

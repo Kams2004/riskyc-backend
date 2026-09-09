@@ -3,6 +3,7 @@ package com.fashion.Riskyc.exception;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -44,6 +45,17 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
                 .body(new ApiError(HttpStatus.PAYLOAD_TOO_LARGE.value(), "Payload Too Large",
                         "Uploaded file exceeds the maximum allowed size."));
+    }
+
+    // A malformed field (e.g. a non-UUID string where a UUID is expected —
+    // a stale mobile/web cart item from before an id format changed, or a
+    // hand-crafted request) fails during JSON deserialization itself, before
+    // @Valid even runs, and previously fell all the way through to the
+    // generic 500 handler below with no useful explanation.
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ApiError> handleMalformedBody(HttpMessageNotReadableException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(new ApiError(HttpStatus.BAD_REQUEST.value(), "Bad Request", "Request body is malformed or contains an invalid value."));
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

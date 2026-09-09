@@ -38,9 +38,18 @@ public class PushSubscription {
     @Column(nullable = false)
     private String auth;
 
-    /** The app language active on this device when it subscribed ("en"/"fr") — lets a push notification's text match what the customer reads everywhere else. */
+    /**
+     * The app language active on this device when it subscribed ("en"/"fr")
+     * — lets a push notification's text match what the customer reads
+     * everywhere else. Nullable at the DB level (every write path always
+     * sets it, so it's never actually null going forward) — a NOT NULL
+     * column added later via ddl-auto=update has no default clause Postgres
+     * can use to backfill existing rows, so it fails silently on a table
+     * that already has any; LocalizedText#forLanguage already treats a null
+     * language the same as "en".
+     */
     @Builder.Default
-    @Column(nullable = false, length = 5)
+    @Column(length = 5)
     private String language = "en";
 
     @CreationTimestamp

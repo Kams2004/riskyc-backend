@@ -1,5 +1,6 @@
 package com.fashion.Riskyc.controller;
 
+import com.fashion.Riskyc.dto.request.AttachCustomerRequest;
 import com.fashion.Riskyc.dto.request.CreateOrderRequest;
 import com.fashion.Riskyc.dto.request.SetPaymentMethodRequest;
 import com.fashion.Riskyc.dto.request.UpdateOrderStatusRequest;
@@ -64,5 +65,11 @@ public class OrderController {
     @PatchMapping("/{id}/packaging/complete")
     public OrderResponse completePackaging(@PathVariable UUID id) {
         return orderService.completePackaging(id);
+    }
+
+    /** Public — see OrderService#attachCustomer for the trust model (same "knowing the order id" pattern the rest of guest order access already uses). */
+    @PostMapping("/{id}/attach-customer")
+    public OrderResponse attachCustomer(@PathVariable UUID id, @Valid @RequestBody AttachCustomerRequest request) {
+        return orderService.attachCustomer(id, request.customerId());
     }
 }

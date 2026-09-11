@@ -144,7 +144,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/media/**").permitAll()
                         .requestMatchers(HttpMethod.HEAD, "/api/media/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/orders").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/orders/*/payment-method", "/api/orders/*/payment-proof").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/orders/*/payment-method", "/api/orders/*/payment-proof", "/api/orders/*/attach-customer").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/orders/{id}", "/api/orders/customer/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/conversations", "/api/conversations/messages", "/api/conversations/*/messages/image", "/api/conversations/*/messages/voice", "/api/conversations/*/read-by-customer").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/conversations/customer/**").permitAll()

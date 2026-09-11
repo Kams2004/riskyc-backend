@@ -300,6 +300,25 @@ public class OrderService {
     }
 
     /**
+     * Links a guest order to a customer account after the fact — reached
+     * from the "create an account to track this order" prompt on the
+     * confirmation screen or tracking page, once that signup/login actually
+     * succeeds. Never overwrites an existing attachment (a guest order can
+     * only ever be claimed once), and silently no-ops rather than throwing
+     * if it's already attached, since a failed/duplicate call from the
+     * frontend shouldn't surface as an error to someone who just signed up.
+     */
+    public OrderResponse attachCustomer(UUID orderId, UUID customerId) {
+        Order order = getOrThrow(orderId);
+        if (order.getCustomer() == null) {
+            Customer customer = customerRepository.findById(customerId)
+                    .orElseThrow(() -> ResourceNotFoundException.of("Customer", customerId));
+            order.setCustomer(customer);
+        }
+        return toResponse(order);
+    }
+
+    /**
      * Splits the bulk/grouped-pricing tiers for a product across a list of
      * order lines requesting that same product (e.g. one line per photo the
      * per-photo picker was used to configure), pricing all of them together

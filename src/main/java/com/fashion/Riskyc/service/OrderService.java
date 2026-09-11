@@ -86,6 +86,19 @@ public class OrderService {
         return orderRepository.findAllByOrderByCreatedAtDesc().stream().map(this::toResponse).toList();
     }
 
+    /**
+     * The Packing queue — validated orders waiting to be packed, orders
+     * currently being packed, and orders already packaged — scoped
+     * separately from listAll() so a Packing-only role (VIEW_TREATMENT)
+     * never needs VIEW_ORDERS just to see its own work.
+     */
+    @Transactional(readOnly = true)
+    public List<OrderResponse> listPackingQueue() {
+        return orderRepository
+                .findByStatusInOrderByCreatedAtDesc(List.of(OrderStatus.VALIDATED, OrderStatus.PACKAGING, OrderStatus.PACKAGED))
+                .stream().map(this::toResponse).toList();
+    }
+
     @Transactional(readOnly = true)
     public List<OrderResponse> listForCustomer(UUID customerId) {
         return orderRepository.findByCustomerIdOrderByCreatedAtDesc(customerId).stream().map(this::toResponse).toList();

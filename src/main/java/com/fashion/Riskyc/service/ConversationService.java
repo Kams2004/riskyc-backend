@@ -164,7 +164,7 @@ public class ConversationService {
         }
         pushNotificationService.notifyOrder(orderId,
                 new LocalizedText("Your order has been packaged!", "Votre commande a été emballée !"),
-                new LocalizedText("Delivery details and a picture of your sealed order are ready — tap to view.",
+                new LocalizedText("Delivery details and a picture of your sealed parcel are ready — tap to view.",
                         "Les informations de livraison et une image de votre colis scellé sont prêtes — appuyez pour voir."),
                 siteUrl + "/track/" + orderId);
         return response;

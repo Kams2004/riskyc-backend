@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -15,6 +16,7 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     List<Order> findByCustomerIdOrderByCreatedAtDesc(UUID customerId);
     List<Order> findByStatusOrderByCreatedAtDesc(OrderStatus status);
     List<Order> findAllByOrderByCreatedAtDesc();
+    List<Order> findByStatusInOrderByCreatedAtDesc(Collection<OrderStatus> statuses);
 
     /**
      * Row-locks the order for the rest of the transaction — used by

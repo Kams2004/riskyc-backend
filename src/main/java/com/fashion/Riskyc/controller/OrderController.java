@@ -27,6 +27,12 @@ public class OrderController {
         return orderService.listAll();
     }
 
+    /** The Packing queue — see OrderService#listPackingQueue for why this is separate from list(). */
+    @GetMapping("/packing-queue")
+    public List<OrderResponse> packingQueue() {
+        return orderService.listPackingQueue();
+    }
+
     @GetMapping("/customer/{customerId}")
     public List<OrderResponse> listForCustomer(@PathVariable UUID customerId) {
         return orderService.listForCustomer(customerId);

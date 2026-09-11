@@ -95,12 +95,6 @@ public class DataSeeder implements CommandLineRunner {
                     }
                 }
             }
-            // Treatment reuses GET /api/orders under the hood (filtered
-            // client-side) — a Treatment-only role can claim/complete
-            // packaging but never see anything to work on without this too.
-            if (permissions.contains(Permission.VIEW_TREATMENT)) {
-                changed |= permissions.add(Permission.VIEW_ORDERS);
-            }
             // Whoever can validate (MANAGE_ORDERS) or package (MANAGE_TREATMENT)
             // an order should be able to send the packaging-confirmation message
             // without a separate, easy-to-forget checkbox.

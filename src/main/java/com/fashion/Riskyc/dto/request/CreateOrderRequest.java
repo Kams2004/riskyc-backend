@@ -10,6 +10,8 @@ public record CreateOrderRequest(
         /** Null for a guest checkout. */
         UUID customerId,
         @NotEmpty @Valid List<OrderItemRequest> items,
-        @Valid CustomerInfoRequest customerInfo
+        @Valid CustomerInfoRequest customerInfo,
+        /** The app's active language at checkout — "fr" or anything else treated as "en". */
+        String language
 ) {
 }

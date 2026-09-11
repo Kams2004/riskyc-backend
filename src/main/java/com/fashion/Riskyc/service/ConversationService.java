@@ -158,12 +158,13 @@ public class ConversationService {
 
         ChatMessageResponse response = toResponse(message);
         messagingTemplate.convertAndSend("/topic/conversations/" + conversation.getId(), response);
+        LocalizedText packagedTitle = new LocalizedText("Your order has been packaged!", "Votre commande a été emballée !");
         if (conversation.getCustomer() != null) {
             notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
-                    "Your order has been packaged!", conversation.getId().toString());
+                    packagedTitle.forLanguage(conversation.getOrder().getLanguage()), conversation.getId().toString());
         }
         pushNotificationService.notifyOrder(orderId,
-                new LocalizedText("Your order has been packaged!", "Votre commande a été emballée !"),
+                packagedTitle,
                 new LocalizedText("Delivery details and a picture of your sealed parcel are ready — tap to view.",
                         "Les informations de livraison et une image de votre colis scellé sont prêtes — appuyez pour voir."),
                 siteUrl + "/track/" + orderId);
@@ -254,7 +255,7 @@ public class ConversationService {
         } else {
             if (conversation.getCustomer() != null) {
                 notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
-                        NEW_MESSAGE_TEXT.en(), conversation.getId().toString());
+                        NEW_MESSAGE_TEXT.forLanguage(conversation.getOrder().getLanguage()), conversation.getId().toString());
             }
             pushNewMessageForOrder(conversation);
         }
@@ -289,7 +290,7 @@ public class ConversationService {
         } else {
             if (conversation.getCustomer() != null) {
                 notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
-                        NEW_MESSAGE_TEXT.en(), conversation.getId().toString());
+                        NEW_MESSAGE_TEXT.forLanguage(conversation.getOrder().getLanguage()), conversation.getId().toString());
             }
             pushNewMessageForOrder(conversation);
         }
@@ -325,7 +326,7 @@ public class ConversationService {
         } else {
             if (conversation.getCustomer() != null) {
                 notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
-                        NEW_MESSAGE_TEXT.en(), conversation.getId().toString());
+                        NEW_MESSAGE_TEXT.forLanguage(conversation.getOrder().getLanguage()), conversation.getId().toString());
             }
             pushNewMessageForOrder(conversation);
         }

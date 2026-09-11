@@ -46,6 +46,17 @@ public class Order {
     @Embedded
     private CustomerInfo customerInfo;
 
+    /**
+     * Snapshotted from whichever app language was active at checkout —
+     * mirrors how each push subscription already snapshots its own language
+     * at subscribe time. The single source of truth every customer-facing
+     * channel (SMS, in-app notifications) resolves against for this order,
+     * so they can't drift into different languages for the same event.
+     */
+    @Column(length = 5)
+    @Builder.Default
+    private String language = "en";
+
     @Enumerated(EnumType.STRING)
     private PaymentMethod paymentMethod;
 

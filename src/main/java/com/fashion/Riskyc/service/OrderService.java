@@ -121,6 +121,7 @@ public class OrderService {
                 .status(OrderStatus.PENDING)
                 .customerInfo(toEmbeddable(request.customerInfo()))
                 .total(BigDecimal.ZERO)
+                .language("fr".equalsIgnoreCase(request.language()) ? "fr" : "en")
                 .build();
 
         // Resolve every line's product up front, and group line indices by
@@ -206,9 +207,14 @@ public class OrderService {
         // checkout (payment method chosen + proof uploaded), so this is the
         // real "we've got your order" moment, not raw order creation.
         String customerPhone = order.getCustomerInfo() != null ? order.getCustomerInfo().getPhone() : null;
-        sendCustomerSms(customerPhone, "Riskyc Fashion: your order " + orderId + " was correctly received at Riskyc Fashion store. "
-                + "We are currently reviewing your payment screenshot and you will receive a notification when it is validated. "
-                + "Track your order: " + siteUrl + "/track/" + orderId);
+        sendCustomerSms(customerPhone, new LocalizedText(
+                "Riskyc Fashion: your order " + orderId + " was correctly received at Riskyc Fashion store. "
+                        + "We are currently reviewing your payment screenshot and you will receive a notification when it is validated. "
+                        + "Track your order: " + siteUrl + "/track/" + orderId,
+                "Riskyc Fashion : votre commande " + orderId + " a bien été reçue à la boutique Riskyc Fashion. "
+                        + "Nous examinons actuellement votre preuve de paiement et vous recevrez une notification dès qu'elle sera validée. "
+                        + "Suivez votre commande : " + siteUrl + "/track/" + orderId
+        ).forLanguage(order.getLanguage()));
 
         return response;
     }
@@ -224,7 +230,9 @@ public class OrderService {
         OrderResponse response = toResponse(order);
         if (order.getCustomer() != null) {
             notificationService.notifyCustomer(order.getCustomer().getId(), NotificationType.ORDER_STATUS_CHANGED,
-                    "Your order status changed to " + status, orderId.toString());
+                    new LocalizedText("Your order status changed to " + status, "Le statut de votre commande a changé : " + status)
+                            .forLanguage(order.getLanguage()),
+                    orderId.toString());
         }
         String trackingUrl = siteUrl + "/track/" + orderId;
         String customerPhone = order.getCustomerInfo() != null ? order.getCustomerInfo().getPhone() : null;
@@ -236,8 +244,10 @@ public class OrderService {
                     trackingUrl);
             // 2 of 3 order-lifecycle SMS — sent alongside push, not instead
             // of it, since it reaches the customer even without push enabled.
-            sendCustomerSms(customerPhone, "Riskyc Fashion: your order " + orderId + " has been validated! "
-                    + "Track your order: " + trackingUrl);
+            sendCustomerSms(customerPhone, new LocalizedText(
+                    "Riskyc Fashion: your order " + orderId + " has been validated! Track your order: " + trackingUrl,
+                    "Riskyc Fashion : votre commande " + orderId + " a été validée ! Suivez votre commande : " + trackingUrl
+            ).forLanguage(order.getLanguage()));
         } else if (status == OrderStatus.CANCELLED) {
             pushNotificationService.notifyOrder(orderId,
                     new LocalizedText("Order rejected", "Commande rejetée"),
@@ -306,8 +316,12 @@ public class OrderService {
 
         // 3 of 3 order-lifecycle SMS.
         String customerPhone = order.getCustomerInfo() != null ? order.getCustomerInfo().getPhone() : null;
-        sendCustomerSms(customerPhone, "Riskyc Fashion: your order " + orderId + " has been packaged and is ready! "
-                + "Track your order: " + siteUrl + "/track/" + orderId);
+        sendCustomerSms(customerPhone, new LocalizedText(
+                "Riskyc Fashion: your order " + orderId + " has been packaged and is ready! "
+                        + "Track your order: " + siteUrl + "/track/" + orderId,
+                "Riskyc Fashion : votre commande " + orderId + " a été emballée et est prête ! "
+                        + "Suivez votre commande : " + siteUrl + "/track/" + orderId
+        ).forLanguage(order.getLanguage()));
 
         return response;
     }

@@ -75,12 +75,6 @@ public class OrderService {
     @Value("${app.payment.mobile-money-name}")
     private String mobileMoneyName;
 
-    @Value("${app.payment.free-delivery-threshold}")
-    private BigDecimal freeDeliveryThreshold;
-
-    @Value("${app.payment.delivery-fee}")
-    private BigDecimal deliveryFee;
-
     @Transactional(readOnly = true)
     public List<OrderResponse> listAll() {
         return orderRepository.findAllByOrderByCreatedAtDesc().stream().map(this::toResponse).toList();
@@ -169,8 +163,9 @@ public class OrderService {
                     .build());
         }
 
-        boolean freeDelivery = subtotal.compareTo(freeDeliveryThreshold) >= 0;
-        order.setTotal(freeDelivery ? subtotal : subtotal.add(deliveryFee));
+        // Delivery is free on every order — the customer pays exactly the
+        // sum of what they selected, nothing added.
+        order.setTotal(subtotal);
 
         Order saved = orderRepository.saveAndFlush(order);
         notificationService.notifyAdmin(NotificationType.NEW_ORDER,

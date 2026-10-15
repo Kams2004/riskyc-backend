@@ -36,5 +36,8 @@ public enum Permission {
     VIEW_USERS,
     MANAGE_USERS,
     VIEW_CUSTOMERS,
-    MANAGE_CUSTOMERS
+    MANAGE_CUSTOMERS,
+    /** The promotional image/video carousel shown on the mobile home screen. */
+    VIEW_PUBLICITY,
+    MANAGE_PUBLICITY
 }

@@ -63,6 +63,8 @@ public class SecurityConfig {
     private static final String P_MANAGE_USERS = "PERM_MANAGE_USERS";
     private static final String P_VIEW_CHAT = "PERM_VIEW_CHAT";
     private static final String P_MANAGE_CHAT = "PERM_MANAGE_CHAT";
+    private static final String P_VIEW_PUBLICITY = "PERM_VIEW_PUBLICITY";
+    private static final String P_MANAGE_PUBLICITY = "PERM_MANAGE_PUBLICITY";
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -133,6 +135,15 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PUT, "/api/products/**").hasAuthority(P_MANAGE_PRODUCTS)
                         .requestMatchers(HttpMethod.PATCH, "/api/products/**").hasAuthority(P_MANAGE_PRODUCTS)
                         .requestMatchers(HttpMethod.DELETE, "/api/products/**", "/api/media/**").hasAuthority(P_MANAGE_PRODUCTS)
+
+                        // ── Publicity (the mobile home-screen carousel) ──
+                        // Declared before the generic GET /api/publicity/** admin rule below
+                        // for the same reason as /api/products/admin above.
+                        .requestMatchers(HttpMethod.GET, "/api/publicity/admin").hasAuthority(P_VIEW_PUBLICITY)
+                        .requestMatchers(HttpMethod.POST, "/api/publicity").hasAuthority(P_MANAGE_PUBLICITY)
+                        .requestMatchers(HttpMethod.PATCH, "/api/publicity/**").hasAuthority(P_MANAGE_PUBLICITY)
+                        .requestMatchers(HttpMethod.DELETE, "/api/publicity/**").hasAuthority(P_MANAGE_PUBLICITY)
+                        .requestMatchers(HttpMethod.GET, "/api/publicity").permitAll()
 
                         // ── Always public (storefront + checkout + chat) ──
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/{id}").permitAll()

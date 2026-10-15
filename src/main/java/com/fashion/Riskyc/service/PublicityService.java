@@ -86,8 +86,8 @@ public class PublicityService {
                 s3MediaService.getPresignedUrl(item.getStorageKey()),
                 item.getType(),
                 item.getCaption(),
-                item.getCaptionFont(),
-                item.getCaptionStyle(),
+                item.getCaptionFont() != null ? item.getCaptionFont() : "sans",
+                item.getCaptionStyle() != null ? item.getCaptionStyle() : "bold",
                 item.getPosition(),
                 item.isActive(),
                 item.getUploadedAt()

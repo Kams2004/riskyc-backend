@@ -43,13 +43,18 @@ public class PublicityItem {
     @Column(columnDefinition = "TEXT")
     private String caption;
 
-    /** Which of the app's two brand fonts the caption is rendered in: "sans" (Inter) or "display" (Playfair Display). */
-    @Column(nullable = false)
+    /**
+     * Which of the app's two brand fonts the caption is rendered in: "sans" (Inter) or
+     * "display" (Playfair Display). Nullable at the DB level on purpose — these two
+     * columns were added after publicity_items already had rows in production, and
+     * Postgres rejects "ADD COLUMN ... NOT NULL" with no default against a non-empty
+     * table. {@link PublicityService#toResponse} coalesces a null to the same default
+     * applied here for anything created through the builder.
+     */
     @Builder.Default
     private String captionFont = "sans";
 
-    /** "normal" | "bold" | "italic" | "boldItalic". */
-    @Column(nullable = false)
+    /** "normal" | "bold" | "italic" | "boldItalic". Nullable at the DB level — see {@link #captionFont}. */
     @Builder.Default
     private String captionStyle = "bold";
 

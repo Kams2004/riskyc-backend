@@ -49,10 +49,12 @@ public class PublicityService {
         return toResponse(item);
     }
 
-    public PublicityItemResponse updateItem(UUID id, String caption, Boolean active) {
+    public PublicityItemResponse updateItem(UUID id, String caption, Boolean active, String captionFont, String captionStyle) {
         PublicityItem item = getOrThrow(id);
         if (caption != null) item.setCaption(caption);
         if (active != null) item.setActive(active);
+        if (captionFont != null) item.setCaptionFont(captionFont);
+        if (captionStyle != null) item.setCaptionStyle(captionStyle);
         return toResponse(item);
     }
 
@@ -84,6 +86,8 @@ public class PublicityService {
                 s3MediaService.getPresignedUrl(item.getStorageKey()),
                 item.getType(),
                 item.getCaption(),
+                item.getCaptionFont(),
+                item.getCaptionStyle(),
                 item.getPosition(),
                 item.isActive(),
                 item.getUploadedAt()

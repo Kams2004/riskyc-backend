@@ -14,6 +14,8 @@ public record PublicityItemResponse(
         String presignedUrl,
         MediaType type,
         String caption,
+        String captionFont,
+        String captionStyle,
         Integer position,
         boolean active,
         Instant uploadedAt

@@ -43,6 +43,16 @@ public class PublicityItem {
     @Column(columnDefinition = "TEXT")
     private String caption;
 
+    /** Which of the app's two brand fonts the caption is rendered in: "sans" (Inter) or "display" (Playfair Display). */
+    @Column(nullable = false)
+    @Builder.Default
+    private String captionFont = "sans";
+
+    /** "normal" | "bold" | "italic" | "boldItalic". */
+    @Column(nullable = false)
+    @Builder.Default
+    private String captionStyle = "bold";
+
     /** Display order within the carousel — lower first. Unlike ProductMedia, this needs to be explicitly admin-controlled (reorderable), not just upload order. */
     @Column(nullable = false)
     @Builder.Default

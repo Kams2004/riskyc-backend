@@ -42,7 +42,7 @@ public class PublicityController {
 
     @PatchMapping("/{id}")
     public PublicityItemResponse updateItem(@PathVariable UUID id, @RequestBody UpdatePublicityItemRequest request) {
-        return publicityService.updateItem(id, request.caption(), request.active());
+        return publicityService.updateItem(id, request.caption(), request.active(), request.captionFont(), request.captionStyle());
     }
 
     @PatchMapping("/reorder")

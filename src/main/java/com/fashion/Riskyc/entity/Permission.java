@@ -39,5 +39,10 @@ public enum Permission {
     MANAGE_CUSTOMERS,
     /** The promotional image/video carousel shown on the mobile home screen. */
     VIEW_PUBLICITY,
-    MANAGE_PUBLICITY
+    MANAGE_PUBLICITY,
+    /** The physical point-of-sale till — ring up in-person sales, browse the POS catalog. */
+    VIEW_POS,
+    MANAGE_POS,
+    /** Reverse a completed POS sale and restore its stock — split out the same way UPDATE_PRODUCT_STOCK is split from UPDATE_PRODUCT_COLORS, so a cashier role can ring up sales without being able to void one. */
+    VOID_POS_SALE
 }

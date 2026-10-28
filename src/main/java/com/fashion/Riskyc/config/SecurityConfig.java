@@ -65,6 +65,9 @@ public class SecurityConfig {
     private static final String P_MANAGE_CHAT = "PERM_MANAGE_CHAT";
     private static final String P_VIEW_PUBLICITY = "PERM_VIEW_PUBLICITY";
     private static final String P_MANAGE_PUBLICITY = "PERM_MANAGE_PUBLICITY";
+    private static final String P_VIEW_POS = "PERM_VIEW_POS";
+    private static final String P_MANAGE_POS = "PERM_MANAGE_POS";
+    private static final String P_VOID_POS_SALE = "PERM_VOID_POS_SALE";
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -144,6 +147,15 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/publicity/**").hasAuthority(P_MANAGE_PUBLICITY)
                         .requestMatchers(HttpMethod.DELETE, "/api/publicity/**").hasAuthority(P_MANAGE_PUBLICITY)
                         .requestMatchers(HttpMethod.GET, "/api/publicity").permitAll()
+
+                        // ── POS (the physical till) — no public routes at all, unlike every
+                        // other area above; a terminal always authenticates as a staff admin. ──
+                        .requestMatchers(HttpMethod.GET, "/api/pos/catalog").hasAuthority(P_VIEW_POS)
+                        .requestMatchers(HttpMethod.GET, "/api/pos/sales/flagged").hasAuthority(P_VIEW_POS)
+                        .requestMatchers(HttpMethod.GET, "/api/pos/sales").hasAuthority(P_VIEW_POS)
+                        .requestMatchers(HttpMethod.POST, "/api/pos/sales/*/void").hasAuthority(P_VOID_POS_SALE)
+                        .requestMatchers(HttpMethod.POST, "/api/pos/sales/*/receipt").hasAuthority(P_MANAGE_POS)
+                        .requestMatchers(HttpMethod.POST, "/api/pos/sales").hasAuthority(P_MANAGE_POS)
 
                         // ── Always public (storefront + checkout + chat) ──
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/{id}").permitAll()

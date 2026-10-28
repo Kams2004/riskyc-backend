@@ -6,6 +6,7 @@ import com.fashion.Riskyc.dto.response.MediaResponse;
 import com.fashion.Riskyc.dto.response.ProductAuditLogResponse;
 import com.fashion.Riskyc.dto.response.ProductColorResponse;
 import com.fashion.Riskyc.dto.response.ProductResponse;
+import com.fashion.Riskyc.dto.response.ProductVariantResponse;
 import com.fashion.Riskyc.entity.*;
 import com.fashion.Riskyc.exception.BadRequestException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
@@ -56,6 +57,7 @@ public class ProductService {
     private final OrderItemRepository orderItemRepository;
     private final S3MediaService s3MediaService;
     private final TranslationService translationService;
+    private final ProductVariantService productVariantService;
 
     @Transactional(readOnly = true)
     public Page<ProductResponse> list(Pageable pageable, String categorySlug, String subcategorySlug, String search) {
@@ -76,6 +78,12 @@ public class ProductService {
     @Transactional(readOnly = true)
     public List<ProductResponse> listAllForAdmin() {
         return productRepository.findAll().stream().map(this::toResponse).toList();
+    }
+
+    /** The POS catalog snapshot — every sellable (non-hidden) product with its variants, unpaginated so a till can cache the whole thing locally. */
+    @Transactional(readOnly = true)
+    public List<ProductResponse> listForPos() {
+        return productRepository.findByHiddenFalse().stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
@@ -199,7 +207,12 @@ public class ProductService {
         return toResponse(product);
     }
 
-    /** Updates only the stock count of existing color entries — never adds, removes, or renames one. */
+    /**
+     * @deprecated superseded by {@link #updateVariantStock} — ProductColor.stock is no longer read anywhere in the
+     * order pipeline (see ProductVariant's javadoc). Left in place, unused by the controller, rather than deleted —
+     * the field itself is a planned follow-up cleanup once the new per-variant stock editor has been live a while.
+     */
+    @Deprecated
     public ProductResponse updateStock(UUID id, ProductStockRequest request) {
         Product product = getOrThrow(id);
         Map<UUID, ProductColor> byId = new LinkedHashMap<>();
@@ -216,6 +229,21 @@ public class ProductService {
                     color.setStock(entry.stock());
                 }
             }
+        }
+        if (!changed.isEmpty()) {
+            logAudit(product, ProductAuditSection.STOCK, "Set stock: " + String.join(", ", changed));
+        }
+        return toResponse(product);
+    }
+
+    /** The real UPDATE_PRODUCT_STOCK path — upserts the per-(color,size) ledger in ProductVariant. */
+    public ProductResponse updateVariantStock(UUID id, ProductVariantStockRequest request) {
+        Product product = getOrThrow(id);
+        List<String> changed = new ArrayList<>();
+        for (ProductVariantStockEntryRequest entry : request.variants()) {
+            productVariantService.upsertQuantity(product, entry);
+            String label = (entry.colorName().isEmpty() ? "" : entry.colorName() + " ") + (entry.size().isEmpty() ? "" : entry.size());
+            changed.add((label.isBlank() ? "default" : label.trim()) + " to " + entry.quantity());
         }
         if (!changed.isEmpty()) {
             logAudit(product, ProductAuditSection.STOCK, "Set stock: " + String.join(", ", changed));
@@ -420,6 +448,9 @@ public class ProductService {
                 .map(t -> new BulkPriceTierResponse(t.getQuantity(), t.getPrice()))
                 .toList();
         List<MediaResponse> media = p.getMedia().stream().map(this::toMediaResponse).toList();
+        List<ProductVariantResponse> variants = p.getVariants().stream()
+                .map(v -> new ProductVariantResponse(v.getId(), v.getColorName(), v.getSize(), v.getQuantity(), v.isUntracked()))
+                .toList();
 
         return new ProductResponse(
                 p.getId(),
@@ -441,6 +472,7 @@ public class ProductService {
                 p.getBadge(),
                 p.isHidden(),
                 colors,
+                variants,
                 bulkPrices,
                 media,
                 p.getCreatedByName(),

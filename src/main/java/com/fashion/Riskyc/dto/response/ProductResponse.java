@@ -25,6 +25,8 @@ public record ProductResponse(
         Badge badge,
         boolean hidden,
         List<ProductColorResponse> colors,
+        /** The real stock ledger — see ProductVariant. Empty until the migration backfill (or a sale/order) has created at least one row for this product. */
+        List<ProductVariantResponse> variants,
         List<BulkPriceTierResponse> bulkPrices,
         /** Presigned URLs already resolved — zero extra round-trips for the client. */
         List<MediaResponse> media,

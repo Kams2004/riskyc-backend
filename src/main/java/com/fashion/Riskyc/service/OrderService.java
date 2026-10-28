@@ -26,6 +26,7 @@ import java.math.BigDecimal;
 import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -43,6 +44,7 @@ public class OrderService {
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
     private final CustomerRepository customerRepository;
+    private final ProductVariantService productVariantService;
     private final S3MediaService s3MediaService;
     private final NotificationService notificationService;
     private final SimpMessagingTemplate messagingTemplate;
@@ -166,6 +168,26 @@ public class OrderService {
         // Delivery is free on every order — the customer pays exactly the
         // sum of what they selected, nothing added.
         order.setTotal(subtotal);
+
+        // Stock check/decrement — locked in a stable (product, color, size)
+        // order across the whole request so two concurrent checkouts
+        // touching overlapping variants always acquire locks in the same
+        // sequence (avoids lock-ordering deadlocks). create() is
+        // @Transactional, so a failure partway through rolls back
+        // everything decremented so far in this same loop along with the
+        // order itself — a multi-item cart either fully succeeds or fully
+        // fails, never partially.
+        List<Integer> lockOrder = new ArrayList<>();
+        for (int i = 0; i < request.items().size(); i++) lockOrder.add(i);
+        lockOrder.sort(Comparator.<Integer, UUID>comparing(i -> productsByIndex.get(i).getId())
+                .thenComparing(i -> orEmpty(request.items().get(i).selectedColor()))
+                .thenComparing(i -> orEmpty(request.items().get(i).selectedSize())));
+        for (int i : lockOrder) {
+            OrderItemRequest itemReq = request.items().get(i);
+            Product product = productsByIndex.get(i);
+            ProductVariant variant = productVariantService.resolveForUpdate(product, itemReq.selectedColor(), itemReq.selectedSize());
+            productVariantService.decrementStrict(variant, itemReq.quantity());
+        }
 
         Order saved = orderRepository.saveAndFlush(order);
         notificationService.notifyAdmin(NotificationType.NEW_ORDER,
@@ -408,6 +430,10 @@ public class OrderService {
             lineTotals.add(lineTotal.setScale(2, RoundingMode.HALF_UP));
         }
         return lineTotals;
+    }
+
+    private String orEmpty(String s) {
+        return s != null ? s : "";
     }
 
     private Order getOrThrow(UUID id) {

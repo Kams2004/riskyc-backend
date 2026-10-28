@@ -4,6 +4,8 @@ import com.fashion.Riskyc.entity.*;
 import com.fashion.Riskyc.repository.AdminUserRepository;
 import com.fashion.Riskyc.repository.CategoryRepository;
 import com.fashion.Riskyc.repository.DeliveryContactRepository;
+import com.fashion.Riskyc.repository.ProductRepository;
+import com.fashion.Riskyc.repository.ProductVariantRepository;
 import com.fashion.Riskyc.repository.RoleRepository;
 import com.fashion.Riskyc.repository.SubcategoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -11,6 +13,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.boot.CommandLineRunner;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.sql.DataSource;
 import java.sql.Connection;
@@ -39,6 +43,12 @@ public class DataSeeder implements CommandLineRunner {
     private final DeliveryContactRepository deliveryContactRepository;
     private final PasswordEncoder passwordEncoder;
     private final DataSource dataSource;
+    private final ProductRepository productRepository;
+    private final ProductVariantRepository productVariantRepository;
+    private final PlatformTransactionManager transactionManager;
+
+    /** Seeded quantity for a migration-backfilled variant whose old ProductColor.stock was null ("untracked") — large enough nothing looks sold-out at launch; see ProductVariant#isUntracked(). */
+    private static final int UNTRACKED_SENTINEL_QUANTITY = 999_999;
 
     private static final Pattern VALID_SLUG = Pattern.compile("^[a-z0-9]+(-[a-z0-9]+)*$");
 
@@ -52,6 +62,91 @@ public class DataSeeder implements CommandLineRunner {
         backfillManagePermissionsImplyView();
         backfillSuperAdminHasAllPermissions();
         backfillMalformedCategorySlugs();
+        backfillProductVariants();
+        backfillCashierRole();
+    }
+
+    /**
+     * Adds a minimal "Cashier" role (ring up POS sales, can't void one or
+     * touch anything else) if it doesn't already exist — seedRoles() only
+     * ever runs against a truly empty roles table, so a brand-new role
+     * added there never reaches a database that was already seeded before
+     * this feature shipped (every existing install, this test DB included).
+     * Runs every boot but is a no-op once the role exists.
+     */
+    private void backfillCashierRole() {
+        if (roleRepository.findAll().stream().anyMatch(r -> "Cashier".equals(r.getName()))) return;
+        roleRepository.save(Role.builder()
+                .name("Cashier")
+                .description("Rings up in-person sales at the point of sale")
+                .permissions(Set.of(Permission.VIEW_POS, Permission.MANAGE_POS))
+                .build());
+        log.info("Seeded default Cashier role");
+    }
+
+    /**
+     * One-time (per product), idempotent backfill of the new ProductVariant
+     * stock ledger from the old per-color-only ProductColor.stock — runs
+     * every boot but skips any product that already has variant rows, so it
+     * only ever does real work once per product. Quantity is a best-effort
+     * guess, not a real number:
+     * - A color with stock==null ("untracked" under the old model) seeds
+     *   every size with UNTRACKED_SENTINEL_QUANTITY, flagged untracked=true
+     *   so an admin can tell a migrated sentinel from a real count.
+     * - A color with a real stock number gets it split evenly across that
+     *   product's sizes (remainder on the first), since the old model never
+     *   tracked size-level stock at all — a manual recount after migration
+     *   is the honest recommendation here, not something this code can fix.
+     * A colorless product gets one variant per size with colorName="";
+     * a sizeless product/color gets one variant with size="" — "" is the
+     * same "no option" convention OrderItem.selectedColor/selectedSize
+     * already use, not null.
+     */
+    private void backfillProductVariants() {
+        // run() itself isn't transactional (a CommandLineRunner call has no
+        // surrounding session), and @Transactional on a private method that
+        // this class calls on itself wouldn't actually be applied anyway
+        // (Spring's proxy-based AOP can't intercept self-invocation) — so
+        // this opens a real transaction programmatically instead, which
+        // keeps the Hibernate session open across the loop below. Without
+        // it, product.getColors()/getSizes() throw LazyInitializationException
+        // the moment findAll()'s own short-lived session has already closed.
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            for (Product product : productRepository.findAll()) {
+                if (productVariantRepository.existsByProductId(product.getId())) continue;
+                List<String> sizes = product.getSizes().isEmpty() ? List.of("") : product.getSizes();
+                if (product.getColors().isEmpty()) {
+                    for (String size : sizes) {
+                        saveBackfillVariant(product, "", size, UNTRACKED_SENTINEL_QUANTITY, true);
+                    }
+                } else {
+                    for (ProductColor color : product.getColors()) {
+                        Integer stock = color.getStock();
+                        int sizeCount = sizes.size();
+                        for (int i = 0; i < sizeCount; i++) {
+                            if (stock == null) {
+                                saveBackfillVariant(product, color.getName(), sizes.get(i), UNTRACKED_SENTINEL_QUANTITY, true);
+                            } else {
+                                int base = stock / sizeCount;
+                                int remainder = stock % sizeCount;
+                                int qty = base + (i == 0 ? remainder : 0);
+                                saveBackfillVariant(product, color.getName(), sizes.get(i), qty, false);
+                            }
+                        }
+                    }
+                }
+            }
+        });
+    }
+
+    private void saveBackfillVariant(Product product, String colorName, String size, int quantity, boolean untracked) {
+        productVariantRepository.save(ProductVariant.builder()
+                .product(product)
+                .colorName(colorName)
+                .size(size)
+                .quantity(quantity)
+                .untracked(untracked)
+                .build());
     }
 
     /**

@@ -94,8 +94,8 @@ public class ProductController {
     }
 
     @PatchMapping("/{id}/stock")
-    public ProductResponse updateStock(@PathVariable UUID id, @Valid @RequestBody ProductStockRequest request) {
-        return productService.updateStock(id, request);
+    public ProductResponse updateStock(@PathVariable UUID id, @Valid @RequestBody ProductVariantStockRequest request) {
+        return productService.updateVariantStock(id, request);
     }
 
     @PatchMapping("/{id}/display")

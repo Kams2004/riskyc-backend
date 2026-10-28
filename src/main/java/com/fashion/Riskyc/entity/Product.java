@@ -95,6 +95,11 @@ public class Product {
     @Builder.Default
     private List<ProductColor> colors = new ArrayList<>();
 
+    /** Read-only from here — ProductVariantService owns writes directly against its own repository. Exists on Product purely so toResponse() gets the same Hibernate batch-fetch benefit (hibernate.default_batch_fetch_size) that colors/media already get, instead of an N+1 query per product in a page. */
+    @OneToMany(mappedBy = "product")
+    @Builder.Default
+    private List<ProductVariant> variants = new ArrayList<>();
+
     @OneToMany(mappedBy = "product", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("uploadedAt ASC")
     @Builder.Default

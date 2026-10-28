@@ -151,6 +151,9 @@ public class SecurityConfig {
                         // ── POS (the physical till) — no public routes at all, unlike every
                         // other area above; a terminal always authenticates as a staff admin. ──
                         .requestMatchers(HttpMethod.GET, "/api/pos/catalog").hasAuthority(P_VIEW_POS)
+                        .requestMatchers(HttpMethod.GET, "/api/pos/settings").hasAuthority(P_VIEW_POS)
+                        .requestMatchers(HttpMethod.PATCH, "/api/pos/settings").hasAuthority(P_MANAGE_POS)
+                        .requestMatchers(HttpMethod.POST, "/api/pos/settings/logo").hasAuthority(P_MANAGE_POS)
                         .requestMatchers(HttpMethod.GET, "/api/pos/sales/flagged").hasAuthority(P_VIEW_POS)
                         .requestMatchers(HttpMethod.GET, "/api/pos/sales").hasAuthority(P_VIEW_POS)
                         .requestMatchers(HttpMethod.POST, "/api/pos/sales/*/void").hasAuthority(P_VOID_POS_SALE)

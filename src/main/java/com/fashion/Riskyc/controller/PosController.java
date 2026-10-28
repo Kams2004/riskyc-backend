@@ -1,9 +1,12 @@
 package com.fashion.Riskyc.controller;
 
 import com.fashion.Riskyc.dto.request.CreatePosSaleRequest;
+import com.fashion.Riskyc.dto.request.UpdatePosSettingsRequest;
 import com.fashion.Riskyc.dto.response.PosCatalogResponse;
 import com.fashion.Riskyc.dto.response.PosSaleResponse;
+import com.fashion.Riskyc.dto.response.PosSettingsResponse;
 import com.fashion.Riskyc.service.PosSaleService;
+import com.fashion.Riskyc.service.PosSettingsService;
 import com.fashion.Riskyc.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -21,11 +24,28 @@ public class PosController {
 
     private final PosSaleService posSaleService;
     private final ProductService productService;
+    private final PosSettingsService posSettingsService;
 
     /** What a POS terminal caches locally to browse/sell offline. */
     @GetMapping("/catalog")
     public PosCatalogResponse catalog() {
         return new PosCatalogResponse(Instant.now(), productService.listForPos());
+    }
+
+    /** The configurable ticket — store name/address/phone/footer/paper width/logo. Every cashier can read it (needed to render a receipt); only MANAGE_POS can change it. */
+    @GetMapping("/settings")
+    public PosSettingsResponse getSettings() {
+        return posSettingsService.get();
+    }
+
+    @PatchMapping("/settings")
+    public PosSettingsResponse updateSettings(@Valid @RequestBody UpdatePosSettingsRequest request) {
+        return posSettingsService.update(request);
+    }
+
+    @PostMapping(value = "/settings/logo", consumes = "multipart/form-data")
+    public PosSettingsResponse updateLogo(@RequestParam("file") MultipartFile file) {
+        return posSettingsService.updateLogo(file);
     }
 
     @GetMapping("/sales")

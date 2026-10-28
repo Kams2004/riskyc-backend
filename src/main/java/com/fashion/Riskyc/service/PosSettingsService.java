@@ -1,0 +1,73 @@
+package com.fashion.Riskyc.service;
+
+import com.fashion.Riskyc.dto.request.UpdatePosSettingsRequest;
+import com.fashion.Riskyc.dto.response.PosSettingsResponse;
+import com.fashion.Riskyc.entity.PosSettings;
+import com.fashion.Riskyc.repository.PosSettingsRepository;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+@Service
+@RequiredArgsConstructor
+@Transactional
+public class PosSettingsService {
+
+    private static final String LOGO_FOLDER = "pos-settings";
+
+    private final PosSettingsRepository posSettingsRepository;
+    private final S3MediaService s3MediaService;
+
+    /**
+     * Deliberately NOT @Transactional(readOnly = true) — the first call ever
+     * made lazily INSERTs the default row (see getOrCreate()/PosSettings'
+     * own javadoc), and Postgres rejects a write inside a transaction
+     * Spring/the JDBC driver has marked read-only. Caught by actually
+     * hitting this against a real empty table, not by a compile check.
+     */
+    public PosSettingsResponse get() {
+        return toResponse(getOrCreate());
+    }
+
+    public PosSettingsResponse update(UpdatePosSettingsRequest request) {
+        PosSettings settings = getOrCreate();
+        settings.setStoreName(request.storeName());
+        settings.setStoreAddress(request.storeAddress());
+        settings.setStorePhone(request.storePhone());
+        settings.setFooterMessage(request.footerMessage());
+        settings.setShowCashierName(request.showCashierName());
+        settings.setShowSaleId(request.showSaleId());
+        settings.setPaperWidth(request.paperWidth());
+        return toResponse(settings);
+    }
+
+    public PosSettingsResponse updateLogo(MultipartFile file) {
+        PosSettings settings = getOrCreate();
+        if (settings.getLogoKey() != null) {
+            s3MediaService.delete(settings.getLogoKey());
+        }
+        settings.setLogoKey(s3MediaService.upload(file, LOGO_FOLDER));
+        return toResponse(settings);
+    }
+
+    private PosSettings getOrCreate() {
+        PosSettings existing = posSettingsRepository.findTheOnlyOne();
+        if (existing != null) return existing;
+        return posSettingsRepository.saveAndFlush(PosSettings.builder().build());
+    }
+
+    private PosSettingsResponse toResponse(PosSettings s) {
+        String logoUrl = s.getLogoKey() != null ? s3MediaService.getPresignedUrl(s.getLogoKey()) : null;
+        return new PosSettingsResponse(
+                s.getStoreName(),
+                s.getStoreAddress(),
+                s.getStorePhone(),
+                s.getFooterMessage(),
+                s.isShowCashierName(),
+                s.isShowSaleId(),
+                s.getPaperWidth(),
+                logoUrl
+        );
+    }
+}

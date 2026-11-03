@@ -90,10 +90,21 @@ public class ProductService {
         return products.stream().map(this::toResponse).toList();
     }
 
-    /** The POS catalog snapshot — every sellable (non-hidden) product with its variants, unpaginated so a till can cache the whole thing locally. */
+    /**
+     * The POS catalog snapshot — every sellable (non-hidden) product with
+     * its variants, unpaginated so a till can cache the whole thing
+     * locally. A scoped admin's till only ever offers their own
+     * enterprise's products — selling another seller's inventory isn't a
+     * read-visibility nuance like the storefront's hidden/suspended
+     * filtering, it's a different seller's stock entirely.
+     */
     @Transactional(readOnly = true)
     public List<ProductResponse> listForPos() {
-        return productRepository.findByHiddenFalseAndEnterprise_StatusNot(EnterpriseStatus.SUSPENDED).stream().map(this::toResponse).toList();
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        List<Product> products = scopeId == null
+                ? productRepository.findByHiddenFalseAndEnterprise_StatusNot(EnterpriseStatus.SUSPENDED)
+                : productRepository.findByEnterpriseIdAndHiddenFalse(scopeId);
+        return products.stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)

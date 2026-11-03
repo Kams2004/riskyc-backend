@@ -14,4 +14,12 @@ public interface PosSaleRepository extends JpaRepository<PosSale, UUID> {
     List<PosSale> findAllByOrderBySoldAtDesc();
 
     List<PosSale> findAllByStockReconciliationFlagTrueOrderBySoldAtDesc();
+
+    /** Scoped sales listing — used when the acting admin isn't platform staff. */
+    List<PosSale> findByEnterpriseIdOrderBySoldAtDesc(UUID enterpriseId);
+
+    List<PosSale> findByEnterpriseIdAndStockReconciliationFlagTrueOrderBySoldAtDesc(UUID enterpriseId);
+
+    /** For DataSeeder's one-time backfill onto the platform-default enterprise. */
+    List<PosSale> findByEnterpriseIsNull();
 }

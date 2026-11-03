@@ -40,6 +40,9 @@ public interface ProductRepository extends JpaRepository<Product, UUID> {
     /** Admin listing scoped to one enterprise — unlike findAll(), used when the acting admin isn't platform staff. */
     List<Product> findByEnterpriseId(UUID enterpriseId);
 
+    /** The POS catalog, scoped to one seller's own products — a scoped admin's till never offers another seller's inventory to sell. */
+    List<Product> findByEnterpriseIdAndHiddenFalse(UUID enterpriseId);
+
     boolean existsByCategoryId(UUID categoryId);
 
     boolean existsBySubcategoryId(UUID subcategoryId);

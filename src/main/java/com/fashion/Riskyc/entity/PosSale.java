@@ -42,6 +42,11 @@ public class PosSale {
     @Column(nullable = false)
     private String cashierName;
 
+    /** Which seller this till sale's items belong to — null only for a platform-rung sale whose items span more than one enterprise (only possible for an unscoped admin; a scoped admin's sale is always restricted to their own enterprise, see PosSaleService#create), or for a pre-marketplace sale DataSeeder hasn't backfilled yet. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "enterprise_id")
+    private Enterprise enterprise;
+
     @OneToMany(mappedBy = "sale", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     private List<PosSaleItem> items = new ArrayList<>();

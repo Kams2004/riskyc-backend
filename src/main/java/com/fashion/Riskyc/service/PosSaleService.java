@@ -5,13 +5,16 @@ import com.fashion.Riskyc.dto.request.PosSaleItemRequest;
 import com.fashion.Riskyc.dto.response.PosReconciliationLineResponse;
 import com.fashion.Riskyc.dto.response.PosSaleItemResponse;
 import com.fashion.Riskyc.dto.response.PosSaleResponse;
+import com.fashion.Riskyc.entity.Enterprise;
 import com.fashion.Riskyc.entity.PosSale;
 import com.fashion.Riskyc.entity.PosSaleItem;
 import com.fashion.Riskyc.entity.Product;
 import com.fashion.Riskyc.entity.ProductVariant;
 import com.fashion.Riskyc.exception.BadRequestException;
 import com.fashion.Riskyc.exception.ConflictException;
+import com.fashion.Riskyc.exception.ForbiddenException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
+import com.fashion.Riskyc.repository.EnterpriseRepository;
 import com.fashion.Riskyc.repository.PosSaleItemRepository;
 import com.fashion.Riskyc.repository.PosSaleRepository;
 import com.fashion.Riskyc.repository.ProductRepository;
@@ -51,15 +54,25 @@ public class PosSaleService {
     private final ProductVariantService productVariantService;
     private final S3MediaService s3MediaService;
     private final PricingService pricingService;
+    private final EnterpriseRepository enterpriseRepository;
 
+    /** Platform staff see every sale; a scoped admin sees only their own enterprise's. */
     @Transactional(readOnly = true)
     public List<PosSaleResponse> listAll() {
-        return posSaleRepository.findAllByOrderBySoldAtDesc().stream().map(this::toResponse).toList();
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        List<PosSale> sales = scopeId == null
+                ? posSaleRepository.findAllByOrderBySoldAtDesc()
+                : posSaleRepository.findByEnterpriseIdOrderBySoldAtDesc(scopeId);
+        return sales.stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
     public List<PosSaleResponse> listFlagged() {
-        return posSaleRepository.findAllByStockReconciliationFlagTrueOrderBySoldAtDesc().stream().map(this::toResponse).toList();
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        List<PosSale> sales = scopeId == null
+                ? posSaleRepository.findAllByStockReconciliationFlagTrueOrderBySoldAtDesc()
+                : posSaleRepository.findByEnterpriseIdAndStockReconciliationFlagTrueOrderBySoldAtDesc(scopeId);
+        return sales.stream().map(this::toResponse).toList();
     }
 
     /**
@@ -67,11 +80,15 @@ public class PosSaleService {
      * stock has already been restored) — a handful of sales at most, so one
      * in-memory pass over the already-small POS sales table beats a second
      * bespoke query. Reconciled and still-pending lines come back together;
-     * the frontend splits them into tabs.
+     * the frontend splits them into tabs. Scoped the same way listAll() is.
      */
     @Transactional(readOnly = true)
     public List<PosReconciliationLineResponse> listReconciliationLines() {
-        return posSaleRepository.findAllByOrderBySoldAtDesc().stream()
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        List<PosSale> sales = scopeId == null
+                ? posSaleRepository.findAllByOrderBySoldAtDesc()
+                : posSaleRepository.findByEnterpriseIdOrderBySoldAtDesc(scopeId);
+        return sales.stream()
                 .filter(sale -> !sale.isVoided())
                 .flatMap(sale -> sale.getItems().stream()
                         .filter(item -> item.getStockBeforeSale() != null && item.getQuantity() > item.getStockBeforeSale())
@@ -83,6 +100,7 @@ public class PosSaleService {
     public PosReconciliationLineResponse reconcileItem(UUID itemId) {
         PosSaleItem item = posSaleItemRepository.findById(itemId)
                 .orElseThrow(() -> ResourceNotFoundException.of("PosSaleItem", itemId));
+        requireOwnedOrPlatform(item.getSale());
         if (item.getStockBeforeSale() == null || item.getQuantity() <= item.getStockBeforeSale()) {
             throw new BadRequestException("This line was never oversold — nothing to reconcile.");
         }
@@ -106,12 +124,23 @@ public class PosSaleService {
             return toResponse(existing.get());
         }
 
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+
         List<Product> productsByIndex = new ArrayList<>(request.items().size());
         Map<UUID, List<Integer>> indicesByProduct = new LinkedHashMap<>();
         for (int i = 0; i < request.items().size(); i++) {
             PosSaleItemRequest item = request.items().get(i);
             Product product = productRepository.findById(item.productId())
                     .orElseThrow(() -> new BadRequestException("Product not found: " + item.productId()));
+            // A scoped seller's till can only ever ring up their own
+            // inventory — selling another seller's product isn't a
+            // visibility nuance like the storefront's hidden/suspended
+            // filtering, it's a different business's stock and cash
+            // register entirely. Platform staff keep today's unrestricted
+            // behavior (the flagship-store till).
+            if (scopeId != null && (product.getEnterprise() == null || !scopeId.equals(product.getEnterprise().getId()))) {
+                throw new ForbiddenException("\"" + product.getName() + "\" belongs to a different seller.");
+            }
             productsByIndex.add(product);
             indicesByProduct.computeIfAbsent(product.getId(), k -> new ArrayList<>()).add(i);
         }
@@ -159,6 +188,7 @@ public class PosSaleService {
                 .soldAt(request.soldAt())
                 .stockReconciliationFlag(anyNegative)
                 .total(BigDecimal.ZERO)
+                .enterprise(resolveSaleEnterprise(scopeId, productsByIndex))
                 .build();
 
         BigDecimal total = BigDecimal.ZERO;
@@ -187,6 +217,7 @@ public class PosSaleService {
 
     public PosSaleResponse uploadReceipt(UUID saleId, MultipartFile file) {
         PosSale sale = getOrThrow(saleId);
+        requireOwnedOrPlatform(sale);
         String key = s3MediaService.upload(file, RECEIPT_FOLDER + "/" + saleId);
         sale.setReceiptKey(key);
         return toResponse(sale);
@@ -200,6 +231,7 @@ public class PosSaleService {
      */
     public PosSaleResponse voidSale(UUID saleId) {
         PosSale sale = getOrThrow(saleId);
+        requireOwnedOrPlatform(sale);
         if (sale.isVoided()) {
             throw new ConflictException("Already voided");
         }
@@ -218,6 +250,33 @@ public class PosSaleService {
         return posSaleRepository.findById(id).orElseThrow(() -> ResourceNotFoundException.of("PosSale", id));
     }
 
+    private void requireOwnedOrPlatform(PosSale sale) {
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        if (scopeId == null) return;
+        if (sale.getEnterprise() == null || !scopeId.equals(sale.getEnterprise().getId())) {
+            throw new ForbiddenException("This sale belongs to a different seller.");
+        }
+    }
+
+    /**
+     * A scoped admin's sale is always restricted (by create()'s own guard
+     * above) to their own enterprise's products, so this is just resolving
+     * that one Enterprise. A platform admin's sale has no such restriction —
+     * if every item happens to share one enterprise, record it (useful for
+     * reporting); if it spans more than one, there's no single answer, so
+     * it's left null rather than guessed at.
+     */
+    private Enterprise resolveSaleEnterprise(UUID scopeId, List<Product> productsByIndex) {
+        if (scopeId != null) {
+            return enterpriseRepository.findById(scopeId).orElseThrow(() -> ResourceNotFoundException.of("Enterprise", scopeId));
+        }
+        Enterprise first = productsByIndex.isEmpty() ? null : productsByIndex.get(0).getEnterprise();
+        if (first == null) return null;
+        boolean allSame = productsByIndex.stream()
+                .allMatch(p -> p.getEnterprise() != null && p.getEnterprise().getId().equals(first.getId()));
+        return allSame ? first : null;
+    }
+
     private PosSaleResponse toResponse(PosSale sale) {
         List<PosSaleItemResponse> items = sale.getItems().stream().map(this::toResponse).toList();
         String receiptUrl = sale.getReceiptKey() != null ? s3MediaService.getPresignedUrl(sale.getReceiptKey()) : null;
@@ -226,6 +285,7 @@ public class PosSaleService {
                 sale.getClientSaleId(),
                 sale.getCashierId(),
                 sale.getCashierName(),
+                sale.getEnterprise() != null ? sale.getEnterprise().getId() : null,
                 items,
                 sale.getTotal(),
                 sale.getPaymentMethod(),

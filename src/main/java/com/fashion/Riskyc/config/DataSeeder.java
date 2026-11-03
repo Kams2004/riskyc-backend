@@ -6,6 +6,7 @@ import com.fashion.Riskyc.repository.CategoryRepository;
 import com.fashion.Riskyc.repository.DeliveryContactRepository;
 import com.fashion.Riskyc.repository.EnterpriseRepository;
 import com.fashion.Riskyc.repository.OrderRepository;
+import com.fashion.Riskyc.repository.PosSaleRepository;
 import com.fashion.Riskyc.repository.ProductRepository;
 import com.fashion.Riskyc.repository.ProductVariantRepository;
 import com.fashion.Riskyc.repository.RoleRepository;
@@ -49,6 +50,7 @@ public class DataSeeder implements CommandLineRunner {
     private final ProductVariantRepository productVariantRepository;
     private final EnterpriseRepository enterpriseRepository;
     private final OrderRepository orderRepository;
+    private final PosSaleRepository posSaleRepository;
     private final PlatformTransactionManager transactionManager;
 
     /** Seeded quantity for a migration-backfilled variant whose old ProductColor.stock was null ("untracked") — large enough nothing looks sold-out at launch; see ProductVariant#isUntracked(). */
@@ -72,6 +74,7 @@ public class DataSeeder implements CommandLineRunner {
         seedPlatformDefaultEnterprise();
         backfillProductsOntoDefaultEnterprise();
         backfillOrdersOntoDefaultEnterprise();
+        backfillPosSalesOntoDefaultEnterprise();
     }
 
     /**
@@ -204,6 +207,22 @@ public class DataSeeder implements CommandLineRunner {
             for (Order order : orderRepository.findByEnterpriseIsNull()) {
                 order.setEnterprise(platformDefault);
                 orderRepository.save(order);
+            }
+        });
+    }
+
+    /**
+     * Same backfill, for PosSale.enterprise — every pre-existing till sale
+     * predates per-seller POS scoping, so (same reasoning as orders above)
+     * there's only one enterprise its items could have come from.
+     */
+    private void backfillPosSalesOntoDefaultEnterprise() {
+        Enterprise platformDefault = enterpriseRepository.findByPlatformDefaultTrue().orElse(null);
+        if (platformDefault == null) return;
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            for (PosSale sale : posSaleRepository.findByEnterpriseIsNull()) {
+                sale.setEnterprise(platformDefault);
+                posSaleRepository.save(sale);
             }
         });
     }

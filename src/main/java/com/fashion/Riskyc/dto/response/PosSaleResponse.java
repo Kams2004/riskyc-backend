@@ -12,6 +12,8 @@ public record PosSaleResponse(
         UUID clientSaleId,
         UUID cashierId,
         String cashierName,
+        /** Which seller this sale's items belong to — null for a platform-rung sale spanning more than one enterprise, or a pre-marketplace sale. */
+        UUID enterpriseId,
         List<PosSaleItemResponse> items,
         BigDecimal total,
         PosPaymentMethod paymentMethod,

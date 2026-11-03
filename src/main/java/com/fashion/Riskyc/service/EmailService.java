@@ -43,6 +43,12 @@ public class EmailService {
                 </p>
                 <p><a href="%s/admin/login">Sign in to your seller panel</a></p>
                 <p>If the link doesn't work, go to %s/admin/login directly.</p>
+                <p style="color:#555;font-size:13px;border-top:1px solid #eee;padding-top:12px;margin-top:20px;">
+                    <strong>How payments work:</strong> Riskyc Fashion collects payment from your customers through its
+                    own existing Orange Money and MTN Mobile Money numbers — the same ones used for every seller on the
+                    platform, not a separate account for your shop. Customers upload proof of payment and our team
+                    validates it. Settlement with you for your sales is handled separately, outside the app.
+                </p>
                 """.formatted(owner.getFirstName(), escape(enterprise.getName()), owner.getEmail(), tempPassword, siteUrl, siteUrl);
         send(owner.getEmail(), subject, html);
     }

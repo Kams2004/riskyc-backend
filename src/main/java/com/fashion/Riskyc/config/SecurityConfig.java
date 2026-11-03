@@ -226,6 +226,11 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.POST, "/api/enterprises/*/approve", "/api/enterprises/*/reject").hasAuthority(P_MANAGE_ENTERPRISES)
 
                         // ── Admin users & roles ──
+                        // Self-service password change — any authenticated admin, not gated
+                        // on MANAGE_USERS, since a freshly-invited seller must be able to
+                        // clear their own forced-change flag before they have any other
+                        // permission at all. Declared before the generic POST rule below.
+                        .requestMatchers(HttpMethod.POST, "/api/admin-users/me/change-password").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/admin-users/**", "/api/roles/**").hasAuthority(P_VIEW_USERS)
                         .requestMatchers(HttpMethod.POST, "/api/admin-users/**", "/api/roles/**").hasAuthority(P_MANAGE_USERS)
                         .requestMatchers(HttpMethod.PUT, "/api/admin-users/**", "/api/roles/**").hasAuthority(P_MANAGE_USERS)

@@ -1,6 +1,7 @@
 package com.fashion.Riskyc.controller;
 
 import com.fashion.Riskyc.dto.request.AdminUserRequest;
+import com.fashion.Riskyc.dto.request.ChangePasswordRequest;
 import com.fashion.Riskyc.dto.request.LoginRequest;
 import com.fashion.Riskyc.dto.response.AdminLoginResponse;
 import com.fashion.Riskyc.dto.response.AdminUserResponse;
@@ -44,5 +45,11 @@ public class AdminUserController {
     @PostMapping("/login")
     public AdminLoginResponse login(@Valid @RequestBody LoginRequest request) {
         return adminUserService.login(request);
+    }
+
+    @PostMapping("/me/change-password")
+    public ResponseEntity<Void> changeOwnPassword(@Valid @RequestBody ChangePasswordRequest request) {
+        adminUserService.changeOwnPassword(request);
+        return ResponseEntity.noContent().build();
     }
 }

@@ -1,6 +1,7 @@
 package com.fashion.Riskyc.service;
 
 import com.fashion.Riskyc.dto.request.AdminUserRequest;
+import com.fashion.Riskyc.dto.request.ChangePasswordRequest;
 import com.fashion.Riskyc.dto.request.LoginRequest;
 import com.fashion.Riskyc.dto.response.AdminLoginResponse;
 import com.fashion.Riskyc.dto.response.AdminUserResponse;
@@ -120,6 +121,20 @@ public class AdminUserService {
             throw new BadRequestException("You cannot delete your own account. Ask another admin to remove it if needed.");
         }
         adminUserRepository.deleteById(id);
+    }
+
+    /** Self-service — any authenticated admin changes their own password, e.g. after the forced-change prompt on an invite-provisioned account. */
+    public void changeOwnPassword(ChangePasswordRequest request) {
+        UUID id = CurrentAdmin.idOrNull();
+        if (id == null) {
+            throw new BadRequestException("Not authenticated");
+        }
+        AdminUser user = getOrThrow(id);
+        if (!passwordEncoder.matches(request.currentPassword(), user.getPasswordHash())) {
+            throw new BadRequestException("Current password is incorrect");
+        }
+        user.setPasswordHash(passwordEncoder.encode(request.newPassword()));
+        user.setMustChangePassword(false);
     }
 
     private void requireOwnedOrPlatform(AdminUser user) {

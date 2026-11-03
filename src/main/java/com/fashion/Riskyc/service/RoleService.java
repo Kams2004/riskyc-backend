@@ -29,6 +29,9 @@ public class RoleService {
     private final RoleRepository roleRepository;
     private final EnterpriseRepository enterpriseRepository;
 
+    /** Gate the platform's own seller-review/suspend endpoints — see requireNoPlatformOnlyPermissionsWhenScoped() below for why a scoped role can never hold these. */
+    private static final Set<Permission> PLATFORM_ONLY_PERMISSIONS = Set.of(Permission.VIEW_ENTERPRISES, Permission.MANAGE_ENTERPRISES);
+
     /** Platform staff see every platform-wide role (never another enterprise's); a scoped admin sees only their own enterprise's roles. */
     @Transactional(readOnly = true)
     public List<RoleResponse> listAll() {
@@ -42,10 +45,12 @@ public class RoleService {
         if (duplicateName(request.name(), scope)) {
             throw new BadRequestException("A role named '" + request.name() + "' already exists");
         }
+        Set<Permission> permissions = normalize(request.permissions());
+        requireNoPlatformOnlyPermissionsWhenScoped(scope, permissions);
         Role role = roleRepository.saveAndFlush(Role.builder()
                 .name(request.name())
                 .description(request.description())
-                .permissions(normalize(request.permissions()))
+                .permissions(permissions)
                 .enterprise(scope)
                 .build());
         return toResponse(role);
@@ -57,10 +62,35 @@ public class RoleService {
         if (!role.getName().equalsIgnoreCase(request.name()) && duplicateName(request.name(), role.getEnterprise())) {
             throw new BadRequestException("A role named '" + request.name() + "' already exists");
         }
+        Set<Permission> permissions = normalize(request.permissions());
+        requireNoPlatformOnlyPermissionsWhenScoped(role.getEnterprise(), permissions);
         role.setName(request.name());
         role.setDescription(request.description());
-        role.setPermissions(normalize(request.permissions()));
+        role.setPermissions(permissions);
         return toResponse(role);
+    }
+
+    /**
+     * A seller's own staff can edit their enterprise's roles (MANAGE_USERS
+     * covers that), but a "Manage X" permission carries no scope awareness
+     * of its own — only the explicit requireOwnedOrPlatform()-style guards
+     * each service applies do. VIEW_ENTERPRISES/MANAGE_ENTERPRISES gate the
+     * platform's own seller-review/suspend endpoints, which have no such
+     * per-call ownership guard (there's no "owning enterprise" of another
+     * enterprise's review to check) — so without this, a scoped admin could
+     * grant their own role a platform-only permission and, say, suspend a
+     * competitor or approve a fraudulent application. Checked against every
+     * write path that sets a role's permissions, including the one
+     * EnterpriseService#approve() itself uses to provision a new seller's
+     * first role (defense in depth — DEFAULT_OWNER_PERMISSIONS there is
+     * already a safe, hardcoded set, so this should never actually fire for
+     * that caller).
+     */
+    private void requireNoPlatformOnlyPermissionsWhenScoped(Enterprise scope, Set<Permission> permissions) {
+        if (scope == null) return;
+        if (!java.util.Collections.disjoint(permissions, PLATFORM_ONLY_PERMISSIONS)) {
+            throw new ForbiddenException("A seller's role can't be granted platform-only permissions.");
+        }
     }
 
     private Enterprise resolveCreatorEnterprise() {
@@ -145,10 +175,12 @@ public class RoleService {
      * {@link #normalize} VIEW/MANAGE pairing — as a role created through the UI.
      */
     public Role createScopedRole(Enterprise enterprise, String name, Set<Permission> permissions) {
+        Set<Permission> normalized = normalize(permissions);
+        requireNoPlatformOnlyPermissionsWhenScoped(enterprise, normalized);
         return roleRepository.saveAndFlush(Role.builder()
                 .name(name)
                 .description("Default role created when this seller's account was approved.")
-                .permissions(normalize(permissions))
+                .permissions(normalized)
                 .enterprise(enterprise)
                 .build());
     }

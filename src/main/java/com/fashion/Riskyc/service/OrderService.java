@@ -159,6 +159,14 @@ public class OrderService {
             OrderItemRequest itemReq = request.items().get(i);
             Product product = productRepository.findById(itemReq.productId())
                     .orElseThrow(() -> new BadRequestException("Product not found: " + itemReq.productId()));
+            // The storefront's own listing/search already hide a suspended
+            // seller's catalog from new discovery, but a product already
+            // sitting in a customer's cart from before that seller was
+            // suspended isn't caught by that — block it here too, at the
+            // point of actually placing the order.
+            if (product.getEnterprise() != null && product.getEnterprise().getStatus() == EnterpriseStatus.SUSPENDED) {
+                throw new BadRequestException("This product is no longer available: " + product.getName());
+            }
             productsByIndex.add(product);
             indicesByProduct.computeIfAbsent(product.getId(), k -> new ArrayList<>()).add(i);
         }

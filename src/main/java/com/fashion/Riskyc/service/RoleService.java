@@ -139,6 +139,20 @@ public class RoleService {
         roleRepository.deleteById(id);
     }
 
+    /**
+     * Shared with {@code EnterpriseService.approve()} so a newly-approved seller's
+     * first ("Owner") role is created through the exact same path — and the same
+     * {@link #normalize} VIEW/MANAGE pairing — as a role created through the UI.
+     */
+    public Role createScopedRole(Enterprise enterprise, String name, Set<Permission> permissions) {
+        return roleRepository.saveAndFlush(Role.builder()
+                .name(name)
+                .description("Default role created when this seller's account was approved.")
+                .permissions(normalize(permissions))
+                .enterprise(enterprise)
+                .build());
+    }
+
     private Role getOrThrow(UUID id) {
         return roleRepository.findById(id).orElseThrow(() -> ResourceNotFoundException.of("Role", id));
     }

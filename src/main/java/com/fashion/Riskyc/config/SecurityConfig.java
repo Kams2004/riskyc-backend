@@ -68,6 +68,8 @@ public class SecurityConfig {
     private static final String P_VIEW_POS = "PERM_VIEW_POS";
     private static final String P_MANAGE_POS = "PERM_MANAGE_POS";
     private static final String P_VOID_POS_SALE = "PERM_VOID_POS_SALE";
+    private static final String P_VIEW_ENTERPRISES = "PERM_VIEW_ENTERPRISES";
+    private static final String P_MANAGE_ENTERPRISES = "PERM_MANAGE_ENTERPRISES";
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
@@ -100,6 +102,9 @@ public class SecurityConfig {
                         .requestMatchers("/ws/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/admin-users/login").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/customers/register", "/api/customers/login", "/api/customers/google").permitAll()
+                        // Seller onboarding — anyone can apply to become a seller; the
+                        // review/approval endpoints below stay platform-admin only.
+                        .requestMatchers(HttpMethod.POST, "/api/enterprises/apply").permitAll()
                         // Customer self-service — there's no customer session/JWT scheme (see
                         // class javadoc), so these are identified by path id like the rest of
                         // the customer-facing API. Declared before the generic admin-only
@@ -215,6 +220,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/customers").hasAuthority(P_VIEW_CUSTOMERS)
                         .requestMatchers(HttpMethod.PATCH, "/api/customers/**").hasAuthority(P_MANAGE_CUSTOMERS)
                         .requestMatchers(HttpMethod.DELETE, "/api/customers/**").hasAuthority(P_MANAGE_CUSTOMERS)
+
+                        // ── Enterprises (seller applications/review — platform-only) ──
+                        .requestMatchers(HttpMethod.GET, "/api/enterprises/**").hasAuthority(P_VIEW_ENTERPRISES)
+                        .requestMatchers(HttpMethod.POST, "/api/enterprises/*/approve", "/api/enterprises/*/reject").hasAuthority(P_MANAGE_ENTERPRISES)
 
                         // ── Admin users & roles ──
                         .requestMatchers(HttpMethod.GET, "/api/admin-users/**", "/api/roles/**").hasAuthority(P_VIEW_USERS)

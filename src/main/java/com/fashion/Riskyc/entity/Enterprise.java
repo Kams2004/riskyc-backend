@@ -49,6 +49,11 @@ public class Enterprise {
     @Builder.Default
     private EnterpriseStatus status = EnterpriseStatus.PENDING;
 
+    /** The applicant's own name — becomes the first AdminUser's firstName/lastName at approval time (see EnterpriseService#approve()). */
+    private String contactFirstName;
+
+    private String contactLastName;
+
     @Column(nullable = false)
     private String contactEmail;
 

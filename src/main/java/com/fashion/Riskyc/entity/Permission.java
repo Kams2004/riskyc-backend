@@ -44,5 +44,9 @@ public enum Permission {
     VIEW_POS,
     MANAGE_POS,
     /** Reverse a completed POS sale and restore its stock — split out the same way UPDATE_PRODUCT_STOCK is split from UPDATE_PRODUCT_COLORS, so a cashier role can ring up sales without being able to void one. */
-    VOID_POS_SALE
+    VOID_POS_SALE,
+    /** See/review seller applications and the full enterprise list — platform-only, never granted to an enterprise-scoped role. */
+    VIEW_ENTERPRISES,
+    /** Approve/reject applications, suspend/reactivate an enterprise — platform-only. */
+    MANAGE_ENTERPRISES
 }

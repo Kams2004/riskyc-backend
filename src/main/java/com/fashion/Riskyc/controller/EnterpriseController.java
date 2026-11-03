@@ -4,6 +4,7 @@ import com.fashion.Riskyc.dto.request.EnterpriseApplicationRequest;
 import com.fashion.Riskyc.dto.request.EnterpriseApprovalRequest;
 import com.fashion.Riskyc.dto.request.EnterpriseRejectionRequest;
 import com.fashion.Riskyc.dto.response.EnterpriseResponse;
+import com.fashion.Riskyc.dto.response.EnterpriseStatusResponse;
 import com.fashion.Riskyc.service.EnterpriseService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -33,6 +34,11 @@ public class EnterpriseController {
     @GetMapping("/{id}")
     public EnterpriseResponse getById(@PathVariable UUID id) {
         return enterpriseService.getById(id);
+    }
+
+    @GetMapping("/{id}/status")
+    public EnterpriseStatusResponse getPublicStatus(@PathVariable UUID id, @RequestParam String email) {
+        return enterpriseService.getPublicStatus(id, email);
     }
 
     @PostMapping("/{id}/approve")

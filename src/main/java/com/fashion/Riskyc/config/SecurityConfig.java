@@ -105,6 +105,11 @@ public class SecurityConfig {
                         // Seller onboarding — anyone can apply to become a seller; the
                         // review/approval endpoints below stay platform-admin only.
                         .requestMatchers(HttpMethod.POST, "/api/enterprises/apply").permitAll()
+                        // Declared before the GET /api/enterprises/** VIEW_ENTERPRISES rule
+                        // below — this is the applicant's own lightweight status check
+                        // (requires their contact email to match, see EnterpriseService),
+                        // not the admin review surface.
+                        .requestMatchers(HttpMethod.GET, "/api/enterprises/*/status").permitAll()
                         // Customer self-service — there's no customer session/JWT scheme (see
                         // class javadoc), so these are identified by path id like the rest of
                         // the customer-facing API. Declared before the generic admin-only

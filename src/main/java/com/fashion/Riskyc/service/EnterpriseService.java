@@ -4,6 +4,7 @@ import com.fashion.Riskyc.dto.request.EnterpriseApplicationRequest;
 import com.fashion.Riskyc.dto.request.EnterpriseApprovalRequest;
 import com.fashion.Riskyc.dto.response.CategorySummaryResponse;
 import com.fashion.Riskyc.dto.response.EnterpriseResponse;
+import com.fashion.Riskyc.dto.response.EnterpriseStatusResponse;
 import com.fashion.Riskyc.entity.AccountStatus;
 import com.fashion.Riskyc.entity.AdminUser;
 import com.fashion.Riskyc.entity.Category;
@@ -95,6 +96,21 @@ public class EnterpriseService {
     @Transactional(readOnly = true)
     public EnterpriseResponse getById(UUID id) {
         return toResponse(getOrThrow(id));
+    }
+
+    /**
+     * Public — no VIEW_ENTERPRISES required. Requires the applicant's own
+     * contact email to match, so this can't be used to enumerate other
+     * applicants' status by guessing ids. Used by the "Become a Seller"
+     * wizard's returning-applicant status check.
+     */
+    @Transactional(readOnly = true)
+    public EnterpriseStatusResponse getPublicStatus(UUID id, String contactEmail) {
+        Enterprise enterprise = getOrThrow(id);
+        if (contactEmail == null || !enterprise.getContactEmail().equalsIgnoreCase(contactEmail.trim())) {
+            throw ResourceNotFoundException.of("Enterprise", id);
+        }
+        return new EnterpriseStatusResponse(enterprise.getName(), enterprise.getStatus());
     }
 
     public EnterpriseResponse approve(UUID id, EnterpriseApprovalRequest request) {

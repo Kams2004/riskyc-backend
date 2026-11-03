@@ -54,6 +54,22 @@ public class PosSettings {
     /** S3MediaService storage key, same key-only pattern as every other media field — resolved to a presigned URL at response time. */
     private String logoKey;
 
+    // Which payment buttons the till offers — a shop that doesn't take Orange
+    // Money in person, say, turns it off here rather than cashiers just being
+    // told not to tap it. All three default on so existing/fresh installs
+    // behave exactly as before this field existed.
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean cashEnabled = true;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean orangeMoneyEnabled = true;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean mobileMoneyEnabled = true;
+
     @UpdateTimestamp
     private Instant updatedAt;
 }

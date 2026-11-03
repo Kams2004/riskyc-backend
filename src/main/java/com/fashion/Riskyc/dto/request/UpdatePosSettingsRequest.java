@@ -12,6 +12,9 @@ public record UpdatePosSettingsRequest(
         String footerMessage,
         @NotNull Boolean showCashierName,
         @NotNull Boolean showSaleId,
-        @NotNull ReceiptPaperWidth paperWidth
+        @NotNull ReceiptPaperWidth paperWidth,
+        @NotNull Boolean cashEnabled,
+        @NotNull Boolean orangeMoneyEnabled,
+        @NotNull Boolean mobileMoneyEnabled
 ) {
 }

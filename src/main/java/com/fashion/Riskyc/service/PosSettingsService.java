@@ -3,6 +3,7 @@ package com.fashion.Riskyc.service;
 import com.fashion.Riskyc.dto.request.UpdatePosSettingsRequest;
 import com.fashion.Riskyc.dto.response.PosSettingsResponse;
 import com.fashion.Riskyc.entity.PosSettings;
+import com.fashion.Riskyc.exception.BadRequestException;
 import com.fashion.Riskyc.repository.PosSettingsRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -31,6 +32,9 @@ public class PosSettingsService {
     }
 
     public PosSettingsResponse update(UpdatePosSettingsRequest request) {
+        if (!request.cashEnabled() && !request.orangeMoneyEnabled() && !request.mobileMoneyEnabled()) {
+            throw new BadRequestException("At least one payment method must stay enabled, or the till couldn't charge anyone.");
+        }
         PosSettings settings = getOrCreate();
         settings.setStoreName(request.storeName());
         settings.setStoreAddress(request.storeAddress());
@@ -39,6 +43,9 @@ public class PosSettingsService {
         settings.setShowCashierName(request.showCashierName());
         settings.setShowSaleId(request.showSaleId());
         settings.setPaperWidth(request.paperWidth());
+        settings.setCashEnabled(request.cashEnabled());
+        settings.setOrangeMoneyEnabled(request.orangeMoneyEnabled());
+        settings.setMobileMoneyEnabled(request.mobileMoneyEnabled());
         return toResponse(settings);
     }
 
@@ -67,7 +74,10 @@ public class PosSettingsService {
                 s.isShowCashierName(),
                 s.isShowSaleId(),
                 s.getPaperWidth(),
-                logoUrl
+                logoUrl,
+                s.isCashEnabled(),
+                s.isOrangeMoneyEnabled(),
+                s.isMobileMoneyEnabled()
         );
     }
 }

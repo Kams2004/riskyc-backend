@@ -10,6 +10,9 @@ public record PosSettingsResponse(
         boolean showCashierName,
         boolean showSaleId,
         ReceiptPaperWidth paperWidth,
-        String logoUrl
+        String logoUrl,
+        boolean cashEnabled,
+        boolean orangeMoneyEnabled,
+        boolean mobileMoneyEnabled
 ) {
 }

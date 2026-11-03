@@ -35,4 +35,15 @@ public final class CurrentAdmin {
     public static UUID idOrNull() {
         return get().map(p -> UUID.fromString(p.userId())).orElse(null);
     }
+
+    /**
+     * Null means "platform staff" (not scoped to any one enterprise — sees
+     * and can act on everything, exactly today's behavior) OR "no
+     * authenticated admin at all." Callers that need to tell those two
+     * apart should check {@link #get()} directly; every scoping call site
+     * added for the marketplace pivot treats both the same way (unscoped).
+     */
+    public static UUID enterpriseIdOrNull() {
+        return get().map(AdminPrincipal::enterpriseId).filter(java.util.Objects::nonNull).map(UUID::fromString).orElse(null);
+    }
 }

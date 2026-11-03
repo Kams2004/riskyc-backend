@@ -32,6 +32,7 @@ public class JwtService {
     private static final String CLAIM_ROLE_ID = "roleId";
     private static final String CLAIM_ROLE_NAME = "roleName";
     private static final String CLAIM_PERMISSIONS = "permissions";
+    private static final String CLAIM_ENTERPRISE_ID = "enterpriseId";
 
     private final JwtProperties jwtProperties;
 
@@ -55,6 +56,7 @@ public class JwtService {
                 .claim(CLAIM_ROLE_ID, user.getRole().getId().toString())
                 .claim(CLAIM_ROLE_NAME, user.getRole().getName())
                 .claim(CLAIM_PERMISSIONS, permissionNames)
+                .claim(CLAIM_ENTERPRISE_ID, user.getEnterprise() != null ? user.getEnterprise().getId().toString() : null)
                 .issuedAt(java.util.Date.from(now))
                 .expiration(java.util.Date.from(expiry))
                 .signWith(signingKey())
@@ -81,7 +83,8 @@ public class JwtService {
                 claims.get(CLAIM_NAME, String.class),
                 claims.get(CLAIM_ROLE_ID, String.class),
                 claims.get(CLAIM_ROLE_NAME, String.class),
-                permissions
+                permissions,
+                claims.get(CLAIM_ENTERPRISE_ID, String.class)
         );
     }
 }

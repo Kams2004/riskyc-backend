@@ -7,5 +7,9 @@ import java.util.List;
 import java.util.UUID;
 
 public interface DeliveryContactRepository extends JpaRepository<DeliveryContact, UUID> {
-    List<DeliveryContact> findAllByOrderByPositionAscCreatedAtAsc();
+    /** The platform's own roster (today's exact behavior). */
+    List<DeliveryContact> findAllByEnterpriseIsNullOrderByPositionAscCreatedAtAsc();
+
+    /** One enterprise's own roster. */
+    List<DeliveryContact> findAllByEnterpriseIdOrderByPositionAscCreatedAtAsc(UUID enterpriseId);
 }

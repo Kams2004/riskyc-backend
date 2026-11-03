@@ -2,14 +2,19 @@ package com.fashion.Riskyc.service;
 
 import com.fashion.Riskyc.dto.request.RoleRequest;
 import com.fashion.Riskyc.dto.response.RoleResponse;
+import com.fashion.Riskyc.entity.Enterprise;
 import com.fashion.Riskyc.entity.Permission;
 import com.fashion.Riskyc.entity.Role;
 import com.fashion.Riskyc.exception.BadRequestException;
+import com.fashion.Riskyc.exception.ForbiddenException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
+import com.fashion.Riskyc.repository.EnterpriseRepository;
 import com.fashion.Riskyc.repository.RoleRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+
+import com.fashion.Riskyc.security.CurrentAdmin;
 
 import java.util.HashSet;
 import java.util.List;
@@ -22,30 +27,60 @@ import java.util.UUID;
 public class RoleService {
 
     private final RoleRepository roleRepository;
+    private final EnterpriseRepository enterpriseRepository;
 
+    /** Platform staff see every platform-wide role (never another enterprise's); a scoped admin sees only their own enterprise's roles. */
     @Transactional(readOnly = true)
     public List<RoleResponse> listAll() {
-        return roleRepository.findAll().stream().map(this::toResponse).toList();
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        List<Role> roles = scopeId == null ? roleRepository.findByEnterpriseIsNull() : roleRepository.findByEnterpriseId(scopeId);
+        return roles.stream().map(this::toResponse).toList();
     }
 
     public RoleResponse create(RoleRequest request) {
-        if (roleRepository.existsByNameIgnoreCase(request.name())) {
+        Enterprise scope = resolveCreatorEnterprise();
+        if (duplicateName(request.name(), scope)) {
             throw new BadRequestException("A role named '" + request.name() + "' already exists");
         }
         Role role = roleRepository.saveAndFlush(Role.builder()
                 .name(request.name())
                 .description(request.description())
                 .permissions(normalize(request.permissions()))
+                .enterprise(scope)
                 .build());
         return toResponse(role);
     }
 
     public RoleResponse update(UUID id, RoleRequest request) {
         Role role = getOrThrow(id);
+        requireOwnedOrPlatform(role);
+        if (!role.getName().equalsIgnoreCase(request.name()) && duplicateName(request.name(), role.getEnterprise())) {
+            throw new BadRequestException("A role named '" + request.name() + "' already exists");
+        }
         role.setName(request.name());
         role.setDescription(request.description());
         role.setPermissions(normalize(request.permissions()));
         return toResponse(role);
+    }
+
+    private Enterprise resolveCreatorEnterprise() {
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        return scopeId == null ? null : enterpriseRepository.findById(scopeId)
+                .orElseThrow(() -> ResourceNotFoundException.of("Enterprise", scopeId));
+    }
+
+    private boolean duplicateName(String name, Enterprise scope) {
+        return scope == null
+                ? roleRepository.existsByNameIgnoreCaseAndEnterpriseIsNull(name)
+                : roleRepository.existsByNameIgnoreCaseAndEnterpriseId(name, scope.getId());
+    }
+
+    private void requireOwnedOrPlatform(Role role) {
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        if (scopeId == null) return;
+        if (role.getEnterprise() == null || !scopeId.equals(role.getEnterprise().getId())) {
+            throw new ForbiddenException("This role belongs to a different seller.");
+        }
     }
 
     /**
@@ -99,9 +134,8 @@ public class RoleService {
     }
 
     public void delete(UUID id) {
-        if (!roleRepository.existsById(id)) {
-            throw ResourceNotFoundException.of("Role", id);
-        }
+        Role role = getOrThrow(id);
+        requireOwnedOrPlatform(role);
         roleRepository.deleteById(id);
     }
 
@@ -110,6 +144,7 @@ public class RoleService {
     }
 
     private RoleResponse toResponse(Role r) {
-        return new RoleResponse(r.getId(), r.getName(), r.getDescription(), r.getPermissions(), r.getCreatedAt());
+        return new RoleResponse(r.getId(), r.getName(), r.getDescription(), r.getPermissions(), r.getCreatedAt(),
+                r.getEnterprise() != null ? r.getEnterprise().getId() : null);
     }
 }

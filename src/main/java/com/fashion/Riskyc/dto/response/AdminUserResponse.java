@@ -14,6 +14,8 @@ public record AdminUserResponse(
         String roleName,
         AccountStatus status,
         Instant createdAt,
-        Instant lastLogin
+        Instant lastLogin,
+        /** Null = platform staff. Set = this admin belongs to that enterprise. */
+        UUID enterpriseId
 ) {
 }

@@ -9,8 +9,10 @@ import com.fashion.Riskyc.dto.response.ProductResponse;
 import com.fashion.Riskyc.dto.response.ProductVariantResponse;
 import com.fashion.Riskyc.entity.*;
 import com.fashion.Riskyc.exception.BadRequestException;
+import com.fashion.Riskyc.exception.ForbiddenException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
 import com.fashion.Riskyc.repository.CategoryRepository;
+import com.fashion.Riskyc.repository.EnterpriseRepository;
 import com.fashion.Riskyc.repository.OrderItemRepository;
 import com.fashion.Riskyc.repository.ProductAuditLogRepository;
 import com.fashion.Riskyc.repository.ProductMediaRepository;
@@ -58,32 +60,40 @@ public class ProductService {
     private final S3MediaService s3MediaService;
     private final TranslationService translationService;
     private final ProductVariantService productVariantService;
+    private final EnterpriseRepository enterpriseRepository;
 
     @Transactional(readOnly = true)
     public Page<ProductResponse> list(Pageable pageable, String categorySlug, String subcategorySlug, String search) {
         Page<Product> page;
         if (search != null && !search.isBlank()) {
-            page = productRepository.search(search.trim(), pageable);
+            page = productRepository.search(search.trim(), EnterpriseStatus.SUSPENDED, pageable);
         } else if (categorySlug != null && !categorySlug.isBlank() && subcategorySlug != null && !subcategorySlug.isBlank()) {
-            page = productRepository.findByCategorySlugAndSubcategorySlugAndHiddenFalse(categorySlug, subcategorySlug, pageable);
+            page = productRepository.findByCategorySlugAndSubcategorySlugAndHiddenFalseAndEnterprise_StatusNot(
+                    categorySlug, subcategorySlug, EnterpriseStatus.SUSPENDED, pageable);
         } else if (categorySlug != null && !categorySlug.isBlank()) {
-            page = productRepository.findByCategorySlugAndHiddenFalse(categorySlug, pageable);
+            page = productRepository.findByCategorySlugAndHiddenFalseAndEnterprise_StatusNot(categorySlug, EnterpriseStatus.SUSPENDED, pageable);
         } else {
-            page = productRepository.findByHiddenFalse(pageable);
+            page = productRepository.findByHiddenFalseAndEnterprise_StatusNot(EnterpriseStatus.SUSPENDED, pageable);
         }
         return page.map(this::toResponse);
     }
 
-    /** Admin listing — includes hidden products, unlike {@link #list}. */
+    /**
+     * Admin listing — includes hidden products, unlike {@link #list}.
+     * Platform staff (no enterprise scope) see everything, exactly as
+     * before; a scoped admin sees only their own enterprise's products.
+     */
     @Transactional(readOnly = true)
     public List<ProductResponse> listAllForAdmin() {
-        return productRepository.findAll().stream().map(this::toResponse).toList();
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        List<Product> products = scopeId == null ? productRepository.findAll() : productRepository.findByEnterpriseId(scopeId);
+        return products.stream().map(this::toResponse).toList();
     }
 
     /** The POS catalog snapshot — every sellable (non-hidden) product with its variants, unpaginated so a till can cache the whole thing locally. */
     @Transactional(readOnly = true)
     public List<ProductResponse> listForPos() {
-        return productRepository.findByHiddenFalse().stream().map(this::toResponse).toList();
+        return productRepository.findByHiddenFalseAndEnterprise_StatusNot(EnterpriseStatus.SUSPENDED).stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
@@ -94,6 +104,7 @@ public class ProductService {
     public ProductResponse create(ProductRequest request) {
         Product product = new Product();
         product.setCreatedByName(CurrentAdmin.nameOrNull());
+        product.setEnterprise(resolveCreatorEnterprise());
         applyRequest(product, request);
         // Flush so @CreationTimestamp/@UpdateTimestamp are populated before we
         // serialize the response (they're set by Hibernate at flush time).
@@ -102,9 +113,38 @@ public class ProductService {
         return toResponse(saved);
     }
 
+    /**
+     * A scoped admin's new product always belongs to their own enterprise —
+     * never client-chosen. Platform staff (no scope) default to the
+     * platform's own catalog, same as before this field existed.
+     */
+    private Enterprise resolveCreatorEnterprise() {
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        if (scopeId != null) {
+            return enterpriseRepository.findById(scopeId).orElseThrow(() -> ResourceNotFoundException.of("Enterprise", scopeId));
+        }
+        return enterpriseRepository.findByPlatformDefaultTrue().orElseThrow(() -> new BadRequestException("No platform-default enterprise seeded"));
+    }
+
+    /**
+     * Throws when the acting admin is scoped to an enterprise and this
+     * product isn't theirs. A platform admin (no scope) always passes —
+     * this is also the mechanism that keeps UPDATE_PRODUCT_VISIBILITY
+     * working across every enterprise's products for platform oversight
+     * (Phase 10), since the guard simply never fires for them.
+     */
+    private void requireOwnedOrPlatform(Product product) {
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        if (scopeId == null) return;
+        if (product.getEnterprise() == null || !scopeId.equals(product.getEnterprise().getId())) {
+            throw new ForbiddenException("This product belongs to a different seller.");
+        }
+    }
+
     /** Legacy full-replace — kept for a full MANAGE_PRODUCTS admin submitting every section at once. */
     public ProductResponse update(UUID id, ProductRequest request) {
         Product product = getOrThrow(id);
+        requireOwnedOrPlatform(product);
         applyRequest(product, request);
         logAudit(product, ProductAuditSection.INFO, "Updated the product (full save)");
         return toResponse(product);
@@ -112,6 +152,7 @@ public class ProductService {
 
     public void delete(UUID id) {
         Product product = getOrThrow(id);
+        requireOwnedOrPlatform(product);
         // Past orders keep their own name/price snapshot on each line item, so
         // detaching (not deleting) them here is enough to satisfy the FK and
         // still leaves old orders fully readable — just no longer linked to a
@@ -124,6 +165,7 @@ public class ProductService {
 
     public ProductResponse setHidden(UUID id, boolean hidden) {
         Product product = getOrThrow(id);
+        requireOwnedOrPlatform(product);
         if (product.isHidden() != hidden) {
             product.setHidden(hidden);
             logAudit(product, ProductAuditSection.VISIBILITY, hidden ? "Hid the product" : "Made the product visible");
@@ -133,6 +175,7 @@ public class ProductService {
 
     public ProductResponse updateInfo(UUID id, ProductInfoRequest request) {
         Product product = getOrThrow(id);
+        requireOwnedOrPlatform(product);
         List<String> changed = new ArrayList<>();
 
         if (!Objects.equals(product.getName(), request.name())) {
@@ -166,6 +209,7 @@ public class ProductService {
 
     public ProductResponse updatePricing(UUID id, ProductPricingRequest request) {
         Product product = getOrThrow(id);
+        requireOwnedOrPlatform(product);
         List<String> changed = new ArrayList<>();
 
         BigDecimal newPrice = request.price() != null ? request.price() : BigDecimal.ZERO;
@@ -198,6 +242,7 @@ public class ProductService {
 
     public ProductResponse updateColors(UUID id, ProductColorsRequest request) {
         Product product = getOrThrow(id);
+        requireOwnedOrPlatform(product);
         List<String> before = product.getColors().stream().map(ProductColor::getName).sorted().toList();
         mergeColors(product, request.colors(), false);
         List<String> after = product.getColors().stream().map(ProductColor::getName).sorted().toList();
@@ -215,6 +260,7 @@ public class ProductService {
     @Deprecated
     public ProductResponse updateStock(UUID id, ProductStockRequest request) {
         Product product = getOrThrow(id);
+        requireOwnedOrPlatform(product);
         Map<UUID, ProductColor> byId = new LinkedHashMap<>();
         for (ProductColor c : product.getColors()) {
             byId.put(c.getId(), c);
@@ -239,6 +285,7 @@ public class ProductService {
     /** The real UPDATE_PRODUCT_STOCK path — upserts the per-(color,size) ledger in ProductVariant. */
     public ProductResponse updateVariantStock(UUID id, ProductVariantStockRequest request) {
         Product product = getOrThrow(id);
+        requireOwnedOrPlatform(product);
         List<String> changed = new ArrayList<>();
         for (ProductVariantStockEntryRequest entry : request.variants()) {
             productVariantService.upsertQuantity(product, entry);
@@ -253,6 +300,7 @@ public class ProductService {
 
     public ProductResponse updateDisplay(UUID id, ProductDisplayRequest request) {
         Product product = getOrThrow(id);
+        requireOwnedOrPlatform(product);
         List<String> changed = new ArrayList<>();
 
         if (product.getBadge() != request.badge()) {
@@ -281,16 +329,29 @@ public class ProductService {
 
     @Transactional(readOnly = true)
     public Page<ProductAuditLogResponse> getAuditLog(UUID productId, Pageable pageable) {
+        requireOwnedOrPlatform(getOrThrow(productId));
         return productAuditLogRepository.findByProductIdOrderByChangedAtDesc(productId, pageable).map(this::toAuditResponse);
     }
 
+    /**
+     * A cross-product feed, which a per-row ownership check can't filter
+     * without either an N+1 product lookup per entry or denormalizing an
+     * enterprise id onto every audit row — not worth it for an admin
+     * convenience view. Simplest correct behavior until that's built:
+     * platform staff only; a scoped admin uses {@link #getAuditLog} per
+     * product instead.
+     */
     @Transactional(readOnly = true)
     public Page<ProductAuditLogResponse> getAllAuditLog(Pageable pageable) {
+        if (CurrentAdmin.enterpriseIdOrNull() != null) {
+            throw new ForbiddenException("Not available for a seller account — view a product's own history instead.");
+        }
         return productAuditLogRepository.findAllByOrderByChangedAtDesc(pageable).map(this::toAuditResponse);
     }
 
     public MediaResponse addMedia(UUID productId, MultipartFile file) {
         Product product = getOrThrow(productId);
+        requireOwnedOrPlatform(product);
         String key = s3MediaService.upload(file, MEDIA_FOLDER + "/" + productId);
         ProductMedia media = productMediaRepository.saveAndFlush(ProductMedia.builder()
                 .storageKey(key)
@@ -308,8 +369,11 @@ public class ProductService {
     public void deleteMedia(UUID mediaId) {
         ProductMedia media = productMediaRepository.findById(mediaId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Media", mediaId));
-        s3MediaService.delete(media.getStorageKey());
         Product product = media.getProduct();
+        if (product != null) {
+            requireOwnedOrPlatform(product);
+        }
+        s3MediaService.delete(media.getStorageKey());
         productMediaRepository.delete(media);
         if (product != null) {
             logAudit(product, ProductAuditSection.IMAGES, "Removed a picture");

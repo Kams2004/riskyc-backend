@@ -11,6 +11,8 @@ public record RoleResponse(
         String name,
         String description,
         Set<Permission> permissions,
-        Instant createdAt
+        Instant createdAt,
+        /** Null = a platform-wide role. Set = scoped to that enterprise's own staff. */
+        UUID enterpriseId
 ) {
 }

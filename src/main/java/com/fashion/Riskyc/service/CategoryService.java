@@ -8,8 +8,10 @@ import com.fashion.Riskyc.entity.Category;
 import com.fashion.Riskyc.entity.Subcategory;
 import com.fashion.Riskyc.exception.BadRequestException;
 import com.fashion.Riskyc.exception.ConflictException;
+import com.fashion.Riskyc.exception.ForbiddenException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
 import com.fashion.Riskyc.repository.CategoryRepository;
+import com.fashion.Riskyc.repository.EnterpriseRepository;
 import com.fashion.Riskyc.repository.ProductRepository;
 import com.fashion.Riskyc.repository.SubcategoryRepository;
 import lombok.RequiredArgsConstructor;
@@ -33,13 +35,36 @@ public class CategoryService {
     private final ProductRepository productRepository;
     private final S3MediaService s3MediaService;
     private final TranslationService translationService;
+    private final EnterpriseRepository enterpriseRepository;
 
     @Transactional(readOnly = true)
     public List<CategoryResponse> listAll() {
         return categoryRepository.findAllByOrderByNameAsc().stream().map(this::toResponse).toList();
     }
 
+    /**
+     * Top-level Categories stay a platform-curated list — a seller gets
+     * assigned into existing ones at approval time (see
+     * EnterpriseService#approve()), never creates a new department
+     * themselves. Only Subcategory CRUD below is seller-reachable.
+     */
+    private void requirePlatformStaff() {
+        if (CurrentAdmin.enterpriseIdOrNull() != null) {
+            throw new ForbiddenException("Only platform staff can manage top-level categories.");
+        }
+    }
+
+    /** A seller may only touch Subcategories under a Category their enterprise was assigned at approval time. */
+    private void requireOwnsCategory(UUID categoryId) {
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        if (scopeId == null) return;
+        if (!enterpriseRepository.existsByIdAndCategories_Id(scopeId, categoryId)) {
+            throw new ForbiddenException("This category isn't assigned to your enterprise.");
+        }
+    }
+
     public CategoryResponse create(CategoryRequest request) {
+        requirePlatformStaff();
         if (categoryRepository.existsBySlug(request.slug())) {
             throw new BadRequestException("A category with slug '" + request.slug() + "' already exists");
         }
@@ -57,6 +82,7 @@ public class CategoryService {
     }
 
     public CategoryResponse update(UUID id, CategoryRequest request) {
+        requirePlatformStaff();
         Category category = getOrThrow(id);
         if (categoryRepository.existsByNameIgnoreCaseAndIdNot(request.name(), id)) {
             throw new BadRequestException("A category named '" + request.name() + "' already exists");
@@ -72,6 +98,7 @@ public class CategoryService {
     }
 
     public void delete(UUID id) {
+        requirePlatformStaff();
         Category category = getOrThrow(id);
         if (productRepository.existsByCategoryId(id)) {
             throw new ConflictException(
@@ -84,6 +111,7 @@ public class CategoryService {
     }
 
     public CategoryResponse uploadImage(UUID id, MultipartFile file) {
+        requirePlatformStaff();
         Category category = getOrThrow(id);
         if (category.getImageStorageKey() != null) {
             s3MediaService.delete(category.getImageStorageKey());
@@ -94,6 +122,7 @@ public class CategoryService {
     }
 
     public CategoryResponse deleteImage(UUID id) {
+        requirePlatformStaff();
         Category category = getOrThrow(id);
         if (category.getImageStorageKey() != null) {
             s3MediaService.delete(category.getImageStorageKey());
@@ -103,6 +132,7 @@ public class CategoryService {
     }
 
     public SubcategoryResponse addSubcategory(UUID categoryId, SubcategoryRequest request) {
+        requireOwnsCategory(categoryId);
         Category category = getOrThrow(categoryId);
         Subcategory sub = Subcategory.builder()
                 .slug(request.slug())
@@ -118,6 +148,7 @@ public class CategoryService {
     public SubcategoryResponse updateSubcategory(UUID subcategoryId, SubcategoryRequest request) {
         Subcategory sub = subcategoryRepository.findById(subcategoryId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Subcategory", subcategoryId));
+        requireOwnsCategory(sub.getCategory().getId());
         String previousName = sub.getName();
         sub.setSlug(request.slug());
         sub.setName(request.name());
@@ -130,6 +161,7 @@ public class CategoryService {
     public void deleteSubcategory(UUID subcategoryId) {
         Subcategory sub = subcategoryRepository.findById(subcategoryId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Subcategory", subcategoryId));
+        requireOwnsCategory(sub.getCategory().getId());
         if (productRepository.existsBySubcategoryId(subcategoryId)) {
             throw new ConflictException(
                     "\"" + sub.getName() + "\" still has products assigned to it. Delete those products first.");

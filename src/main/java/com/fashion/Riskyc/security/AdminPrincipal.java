@@ -11,7 +11,9 @@ public record AdminPrincipal(
         String name,
         String roleId,
         String roleName,
-        Set<Permission> permissions
+        Set<Permission> permissions,
+        /** Null = platform staff (sees/acts on everything). Set = scoped to that enterprise's own data only. */
+        String enterpriseId
 ) {
     public boolean hasPermission(Permission permission) {
         return permissions.contains(permission);

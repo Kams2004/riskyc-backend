@@ -134,7 +134,11 @@ public class ConversationService {
 
         // A snapshot, not a live reference — a contact edited/deleted later
         // shouldn't rewrite what an already-sent confirmation showed.
-        List<DeliveryContactSnapshot> deliveryContacts = deliveryContactRepository.findAllByOrderByPositionAscCreatedAtAsc()
+        // Uses the platform's own roster — Order doesn't carry an owning
+        // enterprise yet (that lands with order splitting), so there's no
+        // per-seller roster to pick between here until then; today, every
+        // order is the platform's own anyway, so this is unchanged behavior.
+        List<DeliveryContactSnapshot> deliveryContacts = deliveryContactRepository.findAllByEnterpriseIsNullOrderByPositionAscCreatedAtAsc()
                 .stream()
                 .map(c -> new DeliveryContactSnapshot(c.getName(), c.getPhone()))
                 .toList();

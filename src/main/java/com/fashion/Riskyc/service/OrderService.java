@@ -10,6 +10,7 @@ import com.fashion.Riskyc.dto.response.OrderResponse;
 import com.fashion.Riskyc.entity.*;
 import com.fashion.Riskyc.exception.BadRequestException;
 import com.fashion.Riskyc.exception.ConflictException;
+import com.fashion.Riskyc.exception.ForbiddenException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
 import com.fashion.Riskyc.repository.CustomerRepository;
 import com.fashion.Riskyc.repository.OrderRepository;
@@ -77,22 +78,45 @@ public class OrderService {
     @Value("${app.payment.mobile-money-name}")
     private String mobileMoneyName;
 
+    /** Platform staff (no scope) see every order; a seller's scoped admin sees only their own enterprise's orders. */
     @Transactional(readOnly = true)
     public List<OrderResponse> listAll() {
-        return orderRepository.findAllByOrderByCreatedAtDesc().stream().map(this::toResponse).toList();
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        List<Order> orders = scopeId == null
+                ? orderRepository.findAllByOrderByCreatedAtDesc()
+                : orderRepository.findByEnterpriseIdOrderByCreatedAtDesc(scopeId);
+        return orders.stream().map(this::toResponse).toList();
     }
 
     /**
      * The Packing queue — validated orders waiting to be packed, orders
      * currently being packed, and orders already packaged — scoped
      * separately from listAll() so a Packing-only role (VIEW_TREATMENT)
-     * never needs VIEW_ORDERS just to see its own work.
+     * never needs VIEW_ORDERS just to see its own work. Same enterprise
+     * scoping as listAll() above.
      */
     @Transactional(readOnly = true)
     public List<OrderResponse> listPackingQueue() {
-        return orderRepository
-                .findByStatusInOrderByCreatedAtDesc(List.of(OrderStatus.VALIDATED, OrderStatus.PACKAGING, OrderStatus.PACKAGED))
-                .stream().map(this::toResponse).toList();
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        List<OrderStatus> statuses = List.of(OrderStatus.VALIDATED, OrderStatus.PACKAGING, OrderStatus.PACKAGED);
+        List<Order> orders = scopeId == null
+                ? orderRepository.findByStatusInOrderByCreatedAtDesc(statuses)
+                : orderRepository.findByEnterpriseIdAndStatusInOrderByCreatedAtDesc(scopeId, statuses);
+        return orders.stream().map(this::toResponse).toList();
+    }
+
+    /** The sibling orders produced by one checkout (one per seller involved) — public, same "knowing the id" trust model as getById(). */
+    @Transactional(readOnly = true)
+    public List<OrderResponse> listByCheckoutGroup(UUID checkoutGroupId) {
+        return orderRepository.findByCheckoutGroupIdOrderByCreatedAtDesc(checkoutGroupId).stream().map(this::toResponse).toList();
+    }
+
+    private void requireOwnedOrPlatform(Order order) {
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        if (scopeId == null) return;
+        if (order.getEnterprise() == null || !scopeId.equals(order.getEnterprise().getId())) {
+            throw new ForbiddenException("This order belongs to a different seller.");
+        }
     }
 
     @Transactional(readOnly = true)
@@ -105,26 +129,29 @@ public class OrderService {
         return toResponse(getOrThrow(id));
     }
 
-    public OrderResponse create(CreateOrderRequest request) {
+    /**
+     * A cart can span several sellers — this produces one Order per
+     * enterprise involved (today, with every product still backfilled onto
+     * the single platform-default enterprise, that's always exactly one
+     * Order, so existing single-seller behavior is unchanged byte-for-byte).
+     * All resulting Orders share a freshly-generated checkoutGroupId so the
+     * confirmation screen and tracking page can present them as one purchase.
+     */
+    public List<OrderResponse> create(CreateOrderRequest request) {
         Customer customer = null;
         if (request.customerId() != null) {
             customer = customerRepository.findById(request.customerId())
                     .orElseThrow(() -> ResourceNotFoundException.of("Customer", request.customerId()));
         }
 
-        Order order = Order.builder()
-                .customer(customer)
-                .status(OrderStatus.PENDING)
-                .customerInfo(toEmbeddable(request.customerInfo()))
-                .total(BigDecimal.ZERO)
-                .language("fr".equalsIgnoreCase(request.language()) ? "fr" : "en")
-                .build();
-
         // Resolve every line's product up front, and group line indices by
         // product id — a customer configuring the same product across
         // several photos/sizes/colors (the per-photo picker) still gets bulk
         // pricing on their COMBINED quantity for that product, not on each
         // line in isolation (which would often miss every tier entirely).
+        // Grouping by product (not by enterprise) is correct even after the
+        // enterprise split below — a single product can only ever belong to
+        // one enterprise, so this pass is unaffected by it.
         List<Product> productsByIndex = new ArrayList<>(request.items().size());
         Map<UUID, List<Integer>> indicesByProduct = new LinkedHashMap<>();
         for (int i = 0; i < request.items().size(); i++) {
@@ -145,38 +172,67 @@ public class OrderService {
             }
         }
 
-        BigDecimal subtotal = BigDecimal.ZERO;
+        // Group item indices by seller (enterprise) — one Order per group.
+        // LinkedHashMap preserves first-seen order so the resulting Orders
+        // come back in the same order the customer's cart listed sellers in.
+        Map<UUID, List<Integer>> indicesByEnterprise = new LinkedHashMap<>();
         for (int i = 0; i < request.items().size(); i++) {
-            OrderItemRequest itemReq = request.items().get(i);
-            Product product = productsByIndex.get(i);
-            BigDecimal lineTotal = lineTotals[i];
-            subtotal = subtotal.add(lineTotal);
-            BigDecimal effectiveUnitPrice = lineTotal.divide(BigDecimal.valueOf(itemReq.quantity()), 2, RoundingMode.HALF_UP);
-
-            order.getItems().add(OrderItem.builder()
-                    .order(order)
-                    .product(product)
-                    .productName(product.getName())
-                    .quantity(itemReq.quantity())
-                    .selectedColor(itemReq.selectedColor())
-                    .selectedSize(itemReq.selectedSize())
-                    .selectedImageIndex(itemReq.selectedImageIndex())
-                    .unitPrice(effectiveUnitPrice)
-                    .build());
+            Enterprise enterprise = productsByIndex.get(i).getEnterprise();
+            UUID key = enterprise != null ? enterprise.getId() : null;
+            indicesByEnterprise.computeIfAbsent(key, k -> new ArrayList<>()).add(i);
         }
 
-        // Delivery is free on every order — the customer pays exactly the
-        // sum of what they selected, nothing added.
-        order.setTotal(subtotal);
+        String language = "fr".equalsIgnoreCase(request.language()) ? "fr" : "en";
+        UUID checkoutGroupId = UUID.randomUUID();
+        List<Order> orders = new ArrayList<>(indicesByEnterprise.size());
+        for (List<Integer> indices : indicesByEnterprise.values()) {
+            Enterprise enterprise = productsByIndex.get(indices.get(0)).getEnterprise();
+            Order order = Order.builder()
+                    .customer(customer)
+                    .status(OrderStatus.PENDING)
+                    .customerInfo(toEmbeddable(request.customerInfo()))
+                    .total(BigDecimal.ZERO)
+                    .language(language)
+                    .enterprise(enterprise)
+                    .checkoutGroupId(checkoutGroupId)
+                    .build();
+
+            BigDecimal subtotal = BigDecimal.ZERO;
+            for (int i : indices) {
+                OrderItemRequest itemReq = request.items().get(i);
+                Product product = productsByIndex.get(i);
+                BigDecimal lineTotal = lineTotals[i];
+                subtotal = subtotal.add(lineTotal);
+                BigDecimal effectiveUnitPrice = lineTotal.divide(BigDecimal.valueOf(itemReq.quantity()), 2, RoundingMode.HALF_UP);
+
+                order.getItems().add(OrderItem.builder()
+                        .order(order)
+                        .product(product)
+                        .productName(product.getName())
+                        .quantity(itemReq.quantity())
+                        .selectedColor(itemReq.selectedColor())
+                        .selectedSize(itemReq.selectedSize())
+                        .selectedImageIndex(itemReq.selectedImageIndex())
+                        .unitPrice(effectiveUnitPrice)
+                        .build());
+            }
+
+            // Delivery is free on every order — the customer pays exactly the
+            // sum of what they selected, nothing added.
+            order.setTotal(subtotal);
+            orders.add(order);
+        }
 
         // Stock check/decrement — locked in a stable (product, color, size)
-        // order across the whole request so two concurrent checkouts
-        // touching overlapping variants always acquire locks in the same
-        // sequence (avoids lock-ordering deadlocks). create() is
-        // @Transactional, so a failure partway through rolls back
-        // everything decremented so far in this same loop along with the
-        // order itself — a multi-item cart either fully succeeds or fully
-        // fails, never partially.
+        // order across the WHOLE ORIGINAL REQUEST (not per sub-order), so
+        // two concurrent checkouts touching overlapping variants always
+        // acquire locks in the same sequence regardless of how either one's
+        // cart happens to split across sellers (avoids lock-ordering
+        // deadlocks). create() is @Transactional, so a failure partway
+        // through rolls back everything decremented so far in this same
+        // loop along with every Order being built — a multi-item,
+        // multi-seller cart either fully succeeds or fully fails, never
+        // partially.
         List<Integer> lockOrder = new ArrayList<>();
         for (int i = 0; i < request.items().size(); i++) lockOrder.add(i);
         lockOrder.sort(Comparator.<Integer, UUID>comparing(i -> productsByIndex.get(i).getId())
@@ -189,10 +245,14 @@ public class OrderService {
             productVariantService.decrementStrict(variant, itemReq.quantity());
         }
 
-        Order saved = orderRepository.saveAndFlush(order);
-        notificationService.notifyAdmin(NotificationType.NEW_ORDER,
-                "New order placed for " + formatAmount(saved.getTotal()) + " XAF", saved.getId().toString());
-        return toResponse(saved);
+        List<OrderResponse> responses = new ArrayList<>(orders.size());
+        for (Order order : orders) {
+            Order saved = orderRepository.saveAndFlush(order);
+            notificationService.notifyAdmin(NotificationType.NEW_ORDER,
+                    "New order placed for " + formatAmount(saved.getTotal()) + " XAF", saved.getId().toString());
+            responses.add(toResponse(saved));
+        }
+        return responses;
     }
 
     public OrderResponse setPaymentMethod(UUID orderId, PaymentMethod method) {
@@ -238,6 +298,7 @@ public class OrderService {
 
     public OrderResponse updateStatus(UUID orderId, OrderStatus status, String reason) {
         Order order = getOrThrow(orderId);
+        requireOwnedOrPlatform(order);
         order.setStatus(status);
         order.setStatusChangedByName(CurrentAdmin.nameOrNull());
         order.setStatusChangedAt(Instant.now());
@@ -288,6 +349,7 @@ public class OrderService {
         // VALIDATED before either commits, and both would proceed instead
         // of the second one correctly losing the race below.
         Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow(() -> ResourceNotFoundException.of("Order", orderId));
+        requireOwnedOrPlatform(order);
         if (order.getStatus() != OrderStatus.VALIDATED) {
             if (order.getStatus() == OrderStatus.PACKAGING) {
                 throw new ConflictException("Already being packaged by " + order.getPackagingStartedByName());
@@ -311,6 +373,7 @@ public class OrderService {
     /** Marks an in-progress packaging job as done. */
     public OrderResponse completePackaging(UUID orderId) {
         Order order = getOrThrow(orderId);
+        requireOwnedOrPlatform(order);
         if (order.getStatus() != OrderStatus.PACKAGING) {
             throw new ConflictException("Order isn't currently being packaged (status is " + order.getStatus() + ")");
         }
@@ -471,6 +534,8 @@ public class OrderService {
         return new OrderResponse(
                 o.getId(),
                 o.getCustomer() != null ? o.getCustomer().getId() : null,
+                o.getEnterprise() != null ? o.getEnterprise().getId() : null,
+                o.getCheckoutGroupId(),
                 items,
                 o.getTotal(),
                 o.getStatus(),

@@ -43,8 +43,15 @@ public class OrderController {
         return orderService.getById(id);
     }
 
+    /** The sibling orders from one checkout (one per seller involved) — see OrderService#create. */
+    @GetMapping("/group/{checkoutGroupId}")
+    public List<OrderResponse> getByCheckoutGroup(@PathVariable UUID checkoutGroupId) {
+        return orderService.listByCheckoutGroup(checkoutGroupId);
+    }
+
+    /** A cart spanning several sellers now returns one Order per seller — see OrderService#create. */
     @PostMapping
-    public ResponseEntity<OrderResponse> create(@Valid @RequestBody CreateOrderRequest request) {
+    public ResponseEntity<List<OrderResponse>> create(@Valid @RequestBody CreateOrderRequest request) {
         return ResponseEntity.status(201).body(orderService.create(request));
     }
 

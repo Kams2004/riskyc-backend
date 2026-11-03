@@ -5,6 +5,7 @@ import com.fashion.Riskyc.repository.AdminUserRepository;
 import com.fashion.Riskyc.repository.CategoryRepository;
 import com.fashion.Riskyc.repository.DeliveryContactRepository;
 import com.fashion.Riskyc.repository.EnterpriseRepository;
+import com.fashion.Riskyc.repository.OrderRepository;
 import com.fashion.Riskyc.repository.ProductRepository;
 import com.fashion.Riskyc.repository.ProductVariantRepository;
 import com.fashion.Riskyc.repository.RoleRepository;
@@ -47,6 +48,7 @@ public class DataSeeder implements CommandLineRunner {
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
     private final EnterpriseRepository enterpriseRepository;
+    private final OrderRepository orderRepository;
     private final PlatformTransactionManager transactionManager;
 
     /** Seeded quantity for a migration-backfilled variant whose old ProductColor.stock was null ("untracked") — large enough nothing looks sold-out at launch; see ProductVariant#isUntracked(). */
@@ -69,6 +71,7 @@ public class DataSeeder implements CommandLineRunner {
         backfillCashierRole();
         seedPlatformDefaultEnterprise();
         backfillProductsOntoDefaultEnterprise();
+        backfillOrdersOntoDefaultEnterprise();
     }
 
     /**
@@ -182,6 +185,25 @@ public class DataSeeder implements CommandLineRunner {
                 if (product.getEnterprise() != null) continue;
                 product.setEnterprise(platformDefault);
                 productRepository.save(product);
+            }
+        });
+    }
+
+    /**
+     * One-time, idempotent backfill of Order.enterprise onto the
+     * platform-default Enterprise for every order that predates this column
+     * (Phase 8 of the marketplace pivot) — same reasoning as
+     * backfillProductsOntoDefaultEnterprise() just above. Every pre-existing
+     * order's items all came from the single pre-marketplace catalog, so
+     * this is unambiguous: there is only one enterprise they could belong to.
+     */
+    private void backfillOrdersOntoDefaultEnterprise() {
+        Enterprise platformDefault = enterpriseRepository.findByPlatformDefaultTrue().orElse(null);
+        if (platformDefault == null) return;
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            for (Order order : orderRepository.findByEnterpriseIsNull()) {
+                order.setEnterprise(platformDefault);
+                orderRepository.save(order);
             }
         });
     }

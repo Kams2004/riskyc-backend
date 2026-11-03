@@ -187,7 +187,7 @@ public class SecurityConfig {
                         // below, which would otherwise also match this literal segment and
                         // make the Packing queue publicly readable.
                         .requestMatchers(HttpMethod.GET, "/api/orders/packing-queue").hasAuthority(P_VIEW_TREATMENT)
-                        .requestMatchers(HttpMethod.GET, "/api/orders/{id}", "/api/orders/customer/**").permitAll()
+                        .requestMatchers(HttpMethod.GET, "/api/orders/{id}", "/api/orders/customer/**", "/api/orders/group/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/conversations", "/api/conversations/messages", "/api/conversations/*/messages/image", "/api/conversations/*/messages/voice", "/api/conversations/*/read-by-customer").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/conversations/customer/**").permitAll()
                         // A guest tracking page has no customerId to look up by, only the

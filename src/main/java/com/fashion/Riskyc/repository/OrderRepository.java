@@ -17,6 +17,11 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     List<Order> findByStatusOrderByCreatedAtDesc(OrderStatus status);
     List<Order> findAllByOrderByCreatedAtDesc();
     List<Order> findByStatusInOrderByCreatedAtDesc(Collection<OrderStatus> statuses);
+    List<Order> findByEnterpriseIdOrderByCreatedAtDesc(UUID enterpriseId);
+    List<Order> findByEnterpriseIdAndStatusInOrderByCreatedAtDesc(UUID enterpriseId, Collection<OrderStatus> statuses);
+    /** The sibling Orders produced by one checkout — see Order#checkoutGroupId. */
+    List<Order> findByCheckoutGroupIdOrderByCreatedAtDesc(UUID checkoutGroupId);
+    List<Order> findByEnterpriseIsNull();
 
     /**
      * Row-locks the order for the rest of the transaction — used by

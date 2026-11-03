@@ -30,6 +30,14 @@ public class Order {
     @JoinColumn(name = "customer_id")
     private Customer customer;
 
+    /** Which seller this order's items belong to — a cart spanning several sellers becomes one Order per enterprise, see OrderService#create(). Nullable only transiently, until DataSeeder backfills pre-marketplace orders onto the platform-default enterprise. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "enterprise_id")
+    private Enterprise enterprise;
+
+    /** Groups the sibling Orders produced by one checkout (one per seller involved) as "the same purchase" — a label, not a foreign key to another table. Null for orders created before this field existed. */
+    private UUID checkoutGroupId;
+
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
     @Builder.Default
     @JsonManagedReference

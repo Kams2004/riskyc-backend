@@ -11,6 +11,10 @@ import java.util.UUID;
 public record OrderResponse(
         UUID id,
         UUID customerId,
+        /** Which seller this order's items belong to — null only for pre-marketplace orders DataSeeder hasn't backfilled yet. */
+        UUID enterpriseId,
+        /** Groups this order with any siblings from the same checkout (one per seller involved) — see GET /api/orders/group/{checkoutGroupId}. */
+        UUID checkoutGroupId,
         List<OrderItemResponse> items,
         BigDecimal total,
         OrderStatus status,

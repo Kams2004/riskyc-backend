@@ -155,6 +155,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/pos/settings").hasAuthority(P_MANAGE_POS)
                         .requestMatchers(HttpMethod.POST, "/api/pos/settings/logo").hasAuthority(P_MANAGE_POS)
                         .requestMatchers(HttpMethod.GET, "/api/pos/sales/flagged").hasAuthority(P_VIEW_POS)
+                        .requestMatchers(HttpMethod.GET, "/api/pos/reconciliation").hasAuthority(P_VIEW_POS)
+                        .requestMatchers(HttpMethod.POST, "/api/pos/reconciliation/*/resolve").hasAuthority(P_MANAGE_POS)
                         .requestMatchers(HttpMethod.GET, "/api/pos/sales").hasAuthority(P_VIEW_POS)
                         .requestMatchers(HttpMethod.POST, "/api/pos/sales/*/void").hasAuthority(P_VOID_POS_SALE)
                         .requestMatchers(HttpMethod.POST, "/api/pos/sales/*/receipt").hasAuthority(P_MANAGE_POS)

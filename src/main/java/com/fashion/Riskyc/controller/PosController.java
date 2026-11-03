@@ -3,6 +3,7 @@ package com.fashion.Riskyc.controller;
 import com.fashion.Riskyc.dto.request.CreatePosSaleRequest;
 import com.fashion.Riskyc.dto.request.UpdatePosSettingsRequest;
 import com.fashion.Riskyc.dto.response.PosCatalogResponse;
+import com.fashion.Riskyc.dto.response.PosReconciliationLineResponse;
 import com.fashion.Riskyc.dto.response.PosSaleResponse;
 import com.fashion.Riskyc.dto.response.PosSettingsResponse;
 import com.fashion.Riskyc.service.PosSaleService;
@@ -57,6 +58,18 @@ public class PosController {
     @GetMapping("/sales/flagged")
     public List<PosSaleResponse> listFlaggedSales() {
         return posSaleService.listFlagged();
+    }
+
+    /** Line-level reconciliation queue — every oversold sale item, pending and already-handled alike; the frontend splits them into tabs. */
+    @GetMapping("/reconciliation")
+    public List<PosReconciliationLineResponse> listReconciliation() {
+        return posSaleService.listReconciliationLines();
+    }
+
+    /** Marks one oversold line reviewed/handled — an audit marker, not a stock change (that's the Products stock editor's job). */
+    @PostMapping("/reconciliation/{itemId}/resolve")
+    public PosReconciliationLineResponse resolveReconciliation(@PathVariable UUID itemId) {
+        return posSaleService.reconcileItem(itemId);
     }
 
     /** Idempotent by clientSaleId — see CreatePosSaleRequest's own javadoc. Always 200: a retried sync returns the already-persisted sale exactly as if it had just been created, so the client has no reason to branch on which happened. */

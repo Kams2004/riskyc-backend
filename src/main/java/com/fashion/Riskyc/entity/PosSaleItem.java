@@ -5,6 +5,7 @@ import jakarta.persistence.*;
 import lombok.*;
 
 import java.math.BigDecimal;
+import java.time.Instant;
 import java.util.UUID;
 
 @Entity
@@ -45,4 +46,21 @@ public class PosSaleItem {
     /** Snapshot of the unit price at sale time — same reasoning as OrderItem.unitPrice. */
     @Column(nullable = false, precision = 12, scale = 2)
     private BigDecimal unitPrice;
+
+    /**
+     * The variant's quantity immediately before this line decremented it —
+     * captured once, at sale time, since the live stock number keeps moving
+     * afterward and can't be reconstructed later. Null for sales made before
+     * this field existed. oversoldBy = max(0, quantity - stockBeforeSale);
+     * a line is a reconciliation candidate when that's > 0.
+     */
+    private Integer stockBeforeSale;
+
+    @Column(nullable = false)
+    @Builder.Default
+    private boolean reconciled = false;
+
+    private Instant reconciledAt;
+
+    private String reconciledByName;
 }

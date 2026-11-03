@@ -2,6 +2,7 @@ package com.fashion.Riskyc.service;
 
 import com.fashion.Riskyc.dto.request.CreatePosSaleRequest;
 import com.fashion.Riskyc.dto.request.PosSaleItemRequest;
+import com.fashion.Riskyc.dto.response.PosReconciliationLineResponse;
 import com.fashion.Riskyc.dto.response.PosSaleItemResponse;
 import com.fashion.Riskyc.dto.response.PosSaleResponse;
 import com.fashion.Riskyc.entity.PosSale;
@@ -11,6 +12,7 @@ import com.fashion.Riskyc.entity.ProductVariant;
 import com.fashion.Riskyc.exception.BadRequestException;
 import com.fashion.Riskyc.exception.ConflictException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
+import com.fashion.Riskyc.repository.PosSaleItemRepository;
 import com.fashion.Riskyc.repository.PosSaleRepository;
 import com.fashion.Riskyc.repository.ProductRepository;
 import com.fashion.Riskyc.security.CurrentAdmin;
@@ -41,6 +43,7 @@ public class PosSaleService {
     private static final String RECEIPT_FOLDER = "pos-receipts";
 
     private final PosSaleRepository posSaleRepository;
+    private final PosSaleItemRepository posSaleItemRepository;
     private final ProductRepository productRepository;
     private final ProductVariantService productVariantService;
     private final S3MediaService s3MediaService;
@@ -53,6 +56,39 @@ public class PosSaleService {
     @Transactional(readOnly = true)
     public List<PosSaleResponse> listFlagged() {
         return posSaleRepository.findAllByStockReconciliationFlagTrueOrderBySoldAtDesc().stream().map(this::toResponse).toList();
+    }
+
+    /**
+     * Every oversold line across every sale (voided sales excluded — their
+     * stock has already been restored) — a handful of sales at most, so one
+     * in-memory pass over the already-small POS sales table beats a second
+     * bespoke query. Reconciled and still-pending lines come back together;
+     * the frontend splits them into tabs.
+     */
+    @Transactional(readOnly = true)
+    public List<PosReconciliationLineResponse> listReconciliationLines() {
+        return posSaleRepository.findAllByOrderBySoldAtDesc().stream()
+                .filter(sale -> !sale.isVoided())
+                .flatMap(sale -> sale.getItems().stream()
+                        .filter(item -> item.getStockBeforeSale() != null && item.getQuantity() > item.getStockBeforeSale())
+                        .map(item -> toReconciliationLine(sale, item)))
+                .toList();
+    }
+
+    /** Marks one oversold line reviewed/handled — an audit-trail marker only; it never touches stock itself (that's the Products stock editor's job). */
+    public PosReconciliationLineResponse reconcileItem(UUID itemId) {
+        PosSaleItem item = posSaleItemRepository.findById(itemId)
+                .orElseThrow(() -> ResourceNotFoundException.of("PosSaleItem", itemId));
+        if (item.getStockBeforeSale() == null || item.getQuantity() <= item.getStockBeforeSale()) {
+            throw new BadRequestException("This line was never oversold — nothing to reconcile.");
+        }
+        if (item.isReconciled()) {
+            throw new ConflictException("Already reconciled");
+        }
+        item.setReconciled(true);
+        item.setReconciledAt(Instant.now());
+        item.setReconciledByName(CurrentAdmin.nameOrNull());
+        return toReconciliationLine(item.getSale(), item);
     }
 
     /**
@@ -83,10 +119,12 @@ public class PosSaleService {
                 .thenComparing(i -> request.items().get(i).selectedSize()));
 
         boolean anyNegative = false;
+        Integer[] stockBeforeByIndex = new Integer[request.items().size()];
         for (int i : lockOrder) {
             PosSaleItemRequest item = request.items().get(i);
             Product product = productsByIndex.get(i);
             ProductVariant variant = productVariantService.resolveForUpdate(product, item.selectedColor(), item.selectedSize());
+            stockBeforeByIndex[i] = variant.getQuantity();
             if (productVariantService.decrementAllowingNegative(variant, item.quantity())) {
                 anyNegative = true;
             }
@@ -117,6 +155,7 @@ public class PosSaleService {
                     .selectedColor(itemReq.selectedColor())
                     .selectedSize(itemReq.selectedSize())
                     .unitPrice(unitPrice)
+                    .stockBeforeSale(stockBeforeByIndex[i])
                     .build());
         }
         sale.setTotal(total);
@@ -176,6 +215,33 @@ public class PosSaleService {
                 sale.isVoided(),
                 sale.getVoidedByName(),
                 sale.getVoidedAt()
+        );
+    }
+
+    private PosReconciliationLineResponse toReconciliationLine(PosSale sale, PosSaleItem item) {
+        Product product = item.getProduct();
+        String thumbnailUrl = null;
+        if (product != null && !product.getMedia().isEmpty()) {
+            thumbnailUrl = s3MediaService.getPresignedUrl(product.getMedia().get(0).getStorageKey());
+        }
+        int oversoldBy = item.getQuantity() - item.getStockBeforeSale();
+        return new PosReconciliationLineResponse(
+                item.getId(),
+                sale.getId(),
+                sale.getSoldAt(),
+                sale.getCashierName(),
+                item.getProductName(),
+                thumbnailUrl,
+                item.getSelectedColor(),
+                item.getSelectedSize(),
+                item.getQuantity(),
+                item.getUnitPrice(),
+                item.getStockBeforeSale(),
+                item.getStockBeforeSale() - item.getQuantity(),
+                oversoldBy,
+                item.isReconciled(),
+                item.getReconciledAt(),
+                item.getReconciledByName()
         );
     }
 

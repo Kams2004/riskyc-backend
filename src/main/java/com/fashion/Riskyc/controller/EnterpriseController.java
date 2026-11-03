@@ -50,4 +50,14 @@ public class EnterpriseController {
     public EnterpriseResponse reject(@PathVariable UUID id, @RequestBody(required = false) EnterpriseRejectionRequest request) {
         return enterpriseService.reject(id, request != null ? request.reason() : null);
     }
+
+    @PostMapping("/{id}/suspend")
+    public EnterpriseResponse suspend(@PathVariable UUID id) {
+        return enterpriseService.suspend(id);
+    }
+
+    @PostMapping("/{id}/reactivate")
+    public EnterpriseResponse reactivate(@PathVariable UUID id) {
+        return enterpriseService.reactivate(id);
+    }
 }

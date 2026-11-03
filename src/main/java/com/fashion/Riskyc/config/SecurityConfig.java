@@ -228,7 +228,7 @@ public class SecurityConfig {
 
                         // ── Enterprises (seller applications/review — platform-only) ──
                         .requestMatchers(HttpMethod.GET, "/api/enterprises/**").hasAuthority(P_VIEW_ENTERPRISES)
-                        .requestMatchers(HttpMethod.POST, "/api/enterprises/*/approve", "/api/enterprises/*/reject").hasAuthority(P_MANAGE_ENTERPRISES)
+                        .requestMatchers(HttpMethod.POST, "/api/enterprises/*/approve", "/api/enterprises/*/reject", "/api/enterprises/*/suspend", "/api/enterprises/*/reactivate").hasAuthority(P_MANAGE_ENTERPRISES)
 
                         // ── Admin users & roles ──
                         // Self-service password change — any authenticated admin, not gated

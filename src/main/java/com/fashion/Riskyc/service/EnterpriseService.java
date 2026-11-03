@@ -160,6 +160,39 @@ public class EnterpriseService {
     }
 
     /**
+     * Blocks this seller's staff from logging in (AdminUserService#login)
+     * AND hides their whole catalog from the storefront
+     * (ProductRepository's Enterprise_StatusNot(SUSPENDED) queries) — both,
+     * not just one: blocking login alone leaves a live unfulfillable
+     * catalog, and hiding products alone leaves the seller free to edit an
+     * invisible catalog. Each product's own `hidden` flag is untouched, so
+     * individual visibility choices survive the suspend/reactivate cycle
+     * exactly as they were. The platform's own default enterprise can never
+     * be suspended — doing so would take down the whole storefront.
+     */
+    public EnterpriseResponse suspend(UUID id) {
+        Enterprise enterprise = getOrThrow(id);
+        if (enterprise.isPlatformDefault()) {
+            throw new BadRequestException("The platform's own catalog can't be suspended.");
+        }
+        if (enterprise.getStatus() != EnterpriseStatus.ACTIVE) {
+            throw new BadRequestException("Only an active seller can be suspended.");
+        }
+        enterprise.setStatus(EnterpriseStatus.SUSPENDED);
+        return toResponse(enterprise);
+    }
+
+    /** Restores both login and storefront visibility exactly as they were before suspension — see suspend() above. */
+    public EnterpriseResponse reactivate(UUID id) {
+        Enterprise enterprise = getOrThrow(id);
+        if (enterprise.getStatus() != EnterpriseStatus.SUSPENDED) {
+            throw new BadRequestException("This seller isn't currently suspended.");
+        }
+        enterprise.setStatus(EnterpriseStatus.ACTIVE);
+        return toResponse(enterprise);
+    }
+
+    /**
      * Not ML — a cheap keyword/substring overlap between the applicant's own
      * words (businessType + whatDoYouSell) and every existing Category's
      * name/nameFr, ranked by overlap count. A starting point the super admin

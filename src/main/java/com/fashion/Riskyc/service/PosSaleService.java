@@ -22,10 +22,13 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.math.RoundingMode;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 /**
@@ -47,6 +50,7 @@ public class PosSaleService {
     private final ProductRepository productRepository;
     private final ProductVariantService productVariantService;
     private final S3MediaService s3MediaService;
+    private final PricingService pricingService;
 
     @Transactional(readOnly = true)
     public List<PosSaleResponse> listAll() {
@@ -103,10 +107,27 @@ public class PosSaleService {
         }
 
         List<Product> productsByIndex = new ArrayList<>(request.items().size());
-        for (PosSaleItemRequest item : request.items()) {
+        Map<UUID, List<Integer>> indicesByProduct = new LinkedHashMap<>();
+        for (int i = 0; i < request.items().size(); i++) {
+            PosSaleItemRequest item = request.items().get(i);
             Product product = productRepository.findById(item.productId())
                     .orElseThrow(() -> new BadRequestException("Product not found: " + item.productId()));
             productsByIndex.add(product);
+            indicesByProduct.computeIfAbsent(product.getId(), k -> new ArrayList<>()).add(i);
+        }
+
+        // Same grouped/tiered pricing the storefront checkout applies (see
+        // PricingService) — a cashier ringing up several lines of the same
+        // product (e.g. one per size) still gets the combined-quantity
+        // discount tier, not each line falling short of it individually.
+        BigDecimal[] lineTotals = new BigDecimal[request.items().size()];
+        for (List<Integer> indices : indicesByProduct.values()) {
+            Product product = productsByIndex.get(indices.get(0));
+            List<Integer> quantities = indices.stream().map(i -> request.items().get(i).quantity()).toList();
+            List<BigDecimal> allocated = pricingService.allocateGroupedLineTotals(product.getPrice(), product.getBulkPrices(), quantities);
+            for (int j = 0; j < indices.size(); j++) {
+                lineTotals[indices.get(j)] = allocated.get(j);
+            }
         }
 
         // Lock variants in a stable order across the whole sale — same
@@ -144,9 +165,9 @@ public class PosSaleService {
         for (int i = 0; i < request.items().size(); i++) {
             PosSaleItemRequest itemReq = request.items().get(i);
             Product product = productsByIndex.get(i);
-            BigDecimal unitPrice = product.getPrice();
-            BigDecimal lineTotal = unitPrice.multiply(BigDecimal.valueOf(itemReq.quantity()));
+            BigDecimal lineTotal = lineTotals[i];
             total = total.add(lineTotal);
+            BigDecimal effectiveUnitPrice = lineTotal.divide(BigDecimal.valueOf(itemReq.quantity()), 2, RoundingMode.HALF_UP);
             sale.getItems().add(PosSaleItem.builder()
                     .sale(sale)
                     .product(product)
@@ -154,7 +175,7 @@ public class PosSaleService {
                     .quantity(itemReq.quantity())
                     .selectedColor(itemReq.selectedColor())
                     .selectedSize(itemReq.selectedSize())
-                    .unitPrice(unitPrice)
+                    .unitPrice(effectiveUnitPrice)
                     .stockBeforeSale(stockBeforeByIndex[i])
                     .build());
         }

@@ -32,6 +32,11 @@ public class DeliveryContact {
     @Builder.Default
     private int position = 0;
 
+    /** Null = the platform's own roster (today's exact behavior). Set = that enterprise's own delivery contacts, invisible to everyone else. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "enterprise_id")
+    private Enterprise enterprise;
+
     @CreationTimestamp
     @Column(updatable = false)
     private Instant createdAt;

@@ -4,6 +4,7 @@ import com.fashion.Riskyc.entity.*;
 import com.fashion.Riskyc.repository.AdminUserRepository;
 import com.fashion.Riskyc.repository.CategoryRepository;
 import com.fashion.Riskyc.repository.DeliveryContactRepository;
+import com.fashion.Riskyc.repository.EnterpriseRepository;
 import com.fashion.Riskyc.repository.ProductRepository;
 import com.fashion.Riskyc.repository.ProductVariantRepository;
 import com.fashion.Riskyc.repository.RoleRepository;
@@ -45,6 +46,7 @@ public class DataSeeder implements CommandLineRunner {
     private final DataSource dataSource;
     private final ProductRepository productRepository;
     private final ProductVariantRepository productVariantRepository;
+    private final EnterpriseRepository enterpriseRepository;
     private final PlatformTransactionManager transactionManager;
 
     /** Seeded quantity for a migration-backfilled variant whose old ProductColor.stock was null ("untracked") — large enough nothing looks sold-out at launch; see ProductVariant#isUntracked(). */
@@ -55,6 +57,7 @@ public class DataSeeder implements CommandLineRunner {
     @Override
     public void run(String... args) {
         dropStaleEnumCheckConstraints();
+        dropStaleRoleNameUniqueConstraint();
         seedCategories();
         Role superAdminRole = seedRoles();
         seedAdminUser(superAdminRole);
@@ -64,6 +67,8 @@ public class DataSeeder implements CommandLineRunner {
         backfillMalformedCategorySlugs();
         backfillProductVariants();
         backfillCashierRole();
+        seedPlatformDefaultEnterprise();
+        backfillProductsOntoDefaultEnterprise();
     }
 
     /**
@@ -139,6 +144,48 @@ public class DataSeeder implements CommandLineRunner {
         });
     }
 
+    /**
+     * The marketplace pivot's one-time setup: a single Enterprise row stands
+     * in for "Riskyc Fashion itself" rather than special-casing a null
+     * owner anywhere — every pre-existing product gets backfilled onto it
+     * (see backfillProductsOntoDefaultEnterprise() below), and any future
+     * platform-owned listing uses it the same way a real seller would use
+     * their own Enterprise row. Runs every boot, no-op once it exists.
+     */
+    private void seedPlatformDefaultEnterprise() {
+        if (enterpriseRepository.findByPlatformDefaultTrue().isPresent()) return;
+        enterpriseRepository.save(Enterprise.builder()
+                .name("Riskyc Fashion")
+                .description("The platform's own catalog.")
+                .status(EnterpriseStatus.ACTIVE)
+                .contactEmail("contact@riskycfashion.com")
+                .platformDefault(true)
+                .build());
+        log.info("Seeded the platform-default Enterprise");
+    }
+
+    /**
+     * One-time, idempotent backfill of Product.enterprise onto the
+     * platform-default Enterprise for every product that predates this
+     * column — same TransactionTemplate reasoning as
+     * backfillProductVariants() just above (run() has no surrounding
+     * session, and @Transactional on a privately self-invoked method isn't
+     * applied by Spring's proxy-based AOP either way). Product.enterprise
+     * stays nullable in code until every environment has run this at least
+     * once; see Product.java's own javadoc on the field.
+     */
+    private void backfillProductsOntoDefaultEnterprise() {
+        Enterprise platformDefault = enterpriseRepository.findByPlatformDefaultTrue().orElse(null);
+        if (platformDefault == null) return; // seedPlatformDefaultEnterprise() runs just before this; defensive only.
+        new TransactionTemplate(transactionManager).executeWithoutResult(status -> {
+            for (Product product : productRepository.findAll()) {
+                if (product.getEnterprise() != null) continue;
+                product.setEnterprise(platformDefault);
+                productRepository.save(product);
+            }
+        });
+    }
+
     private void saveBackfillVariant(Product product, String colorName, String size, int quantity, boolean untracked) {
         productVariantRepository.save(ProductVariant.builder()
                 .product(product)
@@ -166,6 +213,27 @@ public class DataSeeder implements CommandLineRunner {
             stmt.execute("ALTER TABLE role_permissions DROP CONSTRAINT IF EXISTS role_permissions_permission_check");
         } catch (SQLException e) {
             log.warn("Could not drop stale role_permissions check constraint (harmless if it was already gone)", e);
+        }
+    }
+
+    /**
+     * Role.name used to be @Column(unique = true) on its own — now it's part
+     * of a composite (enterprise_id, name) unique constraint instead (see
+     * Role.java), so two different enterprises can each have an "Owner"
+     * role. ddl-auto=update only ADDS missing constraints, it never drops or
+     * alters an existing one, so the original single-column unique index
+     * (confirmed in a running install as "ukofx66keruapi6vyqpv6f2or37" —
+     * Hibernate's deterministic auto-generated name for this exact
+     * table+column pairing, so this should match any install created by
+     * this same entity history) would otherwise keep blocking same-named
+     * roles across enterprises forever. Runs every boot, no-op once gone —
+     * same pattern as dropStaleEnumCheckConstraints() above.
+     */
+    private void dropStaleRoleNameUniqueConstraint() {
+        try (Connection conn = dataSource.getConnection(); Statement stmt = conn.createStatement()) {
+            stmt.execute("ALTER TABLE roles DROP CONSTRAINT IF EXISTS ukofx66keruapi6vyqpv6f2or37");
+        } catch (SQLException e) {
+            log.warn("Could not drop stale roles.name unique constraint (harmless if it was already gone)", e);
         }
     }
 

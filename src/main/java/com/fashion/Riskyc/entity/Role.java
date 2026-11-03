@@ -10,7 +10,7 @@ import java.util.Set;
 import java.util.UUID;
 
 @Entity
-@Table(name = "roles")
+@Table(name = "roles", uniqueConstraints = @UniqueConstraint(columnNames = {"enterprise_id", "name"}))
 @Getter
 @Setter
 @NoArgsConstructor
@@ -22,10 +22,20 @@ public class Role {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
-    @Column(nullable = false, unique = true)
+    // Was a single-column unique constraint — now a composite one with
+    // enterprise_id (see @Table above), since multiple enterprises each
+    // naming a role "Owner" would otherwise collide. Postgres allows
+    // multiple NULLs in a composite unique index, so platform-wide roles
+    // (enterprise == null) keep behaving exactly as before.
+    @Column(nullable = false)
     private String name;
 
     private String description;
+
+    /** Null = a platform-wide role (Super Admin, Store Manager, ...), exactly as today. Set = scoped to one enterprise's own staff. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "enterprise_id")
+    private Enterprise enterprise;
 
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "role_permissions", joinColumns = @JoinColumn(name = "role_id"))

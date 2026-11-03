@@ -54,6 +54,17 @@ public class Product {
     @Builder.Default
     private List<BulkPriceTier> bulkPrices = new ArrayList<>();
 
+    /**
+     * The seller this product belongs to. Nullable for now, not
+     * nullable=false — see DataSeeder#backfillProductsOntoDefaultEnterprise()
+     * (ddl-auto=update can't add a NOT NULL column to a non-empty table);
+     * tightened to NOT NULL at the database level in a later deploy once
+     * every environment has run that backfill.
+     */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "enterprise_id")
+    private Enterprise enterprise;
+
     @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "category_id")
     private Category category;

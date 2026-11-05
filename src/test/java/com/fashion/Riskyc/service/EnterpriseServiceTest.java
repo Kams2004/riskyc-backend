@@ -218,7 +218,7 @@ class EnterpriseServiceTest {
 
         EnterpriseApplicationRequest request = new EnterpriseApplicationRequest(
                 "Test Seller", null, "Fashion retailer", "Test", "Seller",
-                "seller@example.com", null, "Dresses and jerseys for women", null);
+                "seller@example.com", null, null, "Dresses and jerseys for women", null);
 
         EnterpriseResponse response = enterpriseService.submitApplication(request);
 
@@ -233,7 +233,7 @@ class EnterpriseServiceTest {
 
         EnterpriseApplicationRequest request = new EnterpriseApplicationRequest(
                 "Test Seller", null, "Fashion retailer", "Test", "Seller",
-                "seller@example.com", null, "Shoes and handbags", null);
+                "seller@example.com", null, null, "Shoes and handbags", null);
 
         EnterpriseResponse response = enterpriseService.submitApplication(request);
 

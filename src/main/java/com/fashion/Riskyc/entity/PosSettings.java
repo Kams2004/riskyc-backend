@@ -8,10 +8,9 @@ import java.time.Instant;
 import java.util.UUID;
 
 /**
- * A single-row table — there's one till configuration, not one per admin.
- * PosSettingsService#get() lazily creates this row with defaults on first
- * read rather than relying on a migration/seed to have done it, so it never
- * needs special backfill handling.
+ * One till configuration per seller (enterprise), plus one with no enterprise for the platform's own till —
+ * so a seller's cashier can only ever change their own shop's tickets. PosSettingsService lazily creates a
+ * row with defaults on first read rather than relying on a migration/seed.
  */
 @Entity
 @Table(name = "pos_settings")
@@ -25,6 +24,11 @@ public class PosSettings {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    /** Null for the platform's own till. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "enterprise_id", unique = true)
+    private Enterprise enterprise;
 
     @Column(nullable = false)
     @Builder.Default
@@ -53,6 +57,12 @@ public class PosSettings {
 
     /** S3MediaService storage key, same key-only pattern as every other media field — resolved to a presigned URL at response time. */
     private String logoKey;
+
+    /** Lets a store keep a logo uploaded but skip it on the printed ticket, without having to delete and re-upload it later. */
+    // The DB default lets ddl-auto add this NOT NULL column to the existing settings row.
+    @Column(nullable = false, columnDefinition = "boolean default true")
+    @Builder.Default
+    private boolean showLogo = true;
 
     // Which payment buttons the till offers — a shop that doesn't take Orange
     // Money in person, say, turns it off here rather than cashiers just being

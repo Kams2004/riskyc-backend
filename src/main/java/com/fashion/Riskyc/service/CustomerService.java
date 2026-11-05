@@ -9,7 +9,10 @@ import com.fashion.Riskyc.entity.Customer;
 import com.fashion.Riskyc.entity.CustomerStatus;
 import com.fashion.Riskyc.exception.BadRequestException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
+import com.fashion.Riskyc.repository.ConversationRepository;
 import com.fashion.Riskyc.repository.CustomerRepository;
+import com.fashion.Riskyc.repository.NotificationRepository;
+import com.fashion.Riskyc.repository.OrderRepository;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -35,6 +38,9 @@ public class CustomerService {
     private static final int CODE_LENGTH = 8;
 
     private final CustomerRepository customerRepository;
+    private final OrderRepository orderRepository;
+    private final ConversationRepository conversationRepository;
+    private final NotificationRepository notificationRepository;
     private final PasswordEncoder passwordEncoder;
     private final SecureRandom random = new SecureRandom();
     private final RestClient restClient = RestClient.create();
@@ -243,6 +249,12 @@ public class CustomerService {
         if (!customerRepository.existsById(id)) {
             throw ResourceNotFoundException.of("Customer", id);
         }
+        // Same approach as deleting a product: history stays readable (orders keep their customerInfo snapshot,
+        // chats keep customerName) and only the link to the account is removed.
+        customerRepository.detachReferrals(id);
+        orderRepository.detachCustomer(id);
+        conversationRepository.detachCustomer(id);
+        notificationRepository.deleteByCustomerId(id);
         customerRepository.deleteById(id);
     }
 

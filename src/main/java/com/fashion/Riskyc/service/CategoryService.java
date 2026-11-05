@@ -104,6 +104,11 @@ public class CategoryService {
             throw new ConflictException(
                     "\"" + category.getName() + "\" still has products assigned to it. Delete those products first.");
         }
+        long sellers = enterpriseRepository.countByCategoryId(id);
+        if (sellers > 0) {
+            throw new ConflictException("\"" + category.getName() + "\" is assigned to " + sellers
+                    + (sellers == 1 ? " seller" : " sellers") + " — remove it from their categories first.");
+        }
         if (category.getImageStorageKey() != null) {
             s3MediaService.delete(category.getImageStorageKey());
         }

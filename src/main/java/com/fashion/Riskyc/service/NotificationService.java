@@ -7,7 +7,10 @@ import com.fashion.Riskyc.entity.NotificationRecipient;
 import com.fashion.Riskyc.entity.NotificationType;
 import com.fashion.Riskyc.repository.CustomerRepository;
 import com.fashion.Riskyc.repository.NotificationRepository;
+import com.fashion.Riskyc.exception.ForbiddenException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
+import com.fashion.Riskyc.repository.EnterpriseRepository;
+import com.fashion.Riskyc.security.CurrentAdmin;
 import lombok.RequiredArgsConstructor;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
@@ -34,18 +37,33 @@ public class NotificationService {
 
     private final NotificationRepository notificationRepository;
     private final CustomerRepository customerRepository;
+    private final EnterpriseRepository enterpriseRepository;
     private final SimpMessagingTemplate messagingTemplate;
 
+    /** A platform-level admin notification — only platform staff (no seller scope) see it. */
     @Transactional
     public NotificationResponse notifyAdmin(NotificationType type, String message, String referenceId) {
+        return notifyAdmin(type, message, referenceId, null);
+    }
+
+    /**
+     * An admin notification about one seller's order: that seller's admins see it (live on
+     * /topic/notifications/admin/enterprise/{id}), and platform staff see everything on /topic/notifications/admin.
+     */
+    @Transactional
+    public NotificationResponse notifyAdmin(NotificationType type, String message, String referenceId, UUID enterpriseId) {
         Notification saved = notificationRepository.saveAndFlush(Notification.builder()
                 .recipientType(NotificationRecipient.ADMIN)
+                .enterprise(enterpriseId != null ? enterpriseRepository.getReferenceById(enterpriseId) : null)
                 .type(type)
                 .message(message)
                 .referenceId(referenceId)
                 .build());
         NotificationResponse response = toResponse(saved);
         messagingTemplate.convertAndSend("/topic/notifications/admin", response);
+        if (enterpriseId != null) {
+            messagingTemplate.convertAndSend("/topic/notifications/admin/enterprise/" + enterpriseId, response);
+        }
         return response;
     }
 
@@ -67,8 +85,11 @@ public class NotificationService {
 
     @Transactional(readOnly = true)
     public List<NotificationResponse> listForAdmin() {
-        return notificationRepository.findByRecipientTypeOrderByCreatedAtDesc(NotificationRecipient.ADMIN)
-                .stream().map(this::toResponse).toList();
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        List<Notification> list = scopeId == null
+                ? notificationRepository.findByRecipientTypeOrderByCreatedAtDesc(NotificationRecipient.ADMIN)
+                : notificationRepository.findByRecipientTypeAndEnterpriseIdOrderByCreatedAtDesc(NotificationRecipient.ADMIN, scopeId);
+        return list.stream().map(this::toResponse).toList();
     }
 
     @Transactional(readOnly = true)
@@ -79,7 +100,10 @@ public class NotificationService {
 
     @Transactional(readOnly = true)
     public long countUnreadForAdmin() {
-        return notificationRepository.countByRecipientTypeAndReadFalse(NotificationRecipient.ADMIN);
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        return scopeId == null
+                ? notificationRepository.countByRecipientTypeAndReadFalse(NotificationRecipient.ADMIN)
+                : notificationRepository.countByRecipientTypeAndEnterpriseIdAndReadFalse(NotificationRecipient.ADMIN, scopeId);
     }
 
     @Transactional(readOnly = true)
@@ -91,6 +115,10 @@ public class NotificationService {
     public NotificationResponse markRead(UUID id) {
         Notification notification = notificationRepository.findById(id)
                 .orElseThrow(() -> ResourceNotFoundException.of("Notification", id));
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        if (scopeId != null && (notification.getEnterprise() == null || !scopeId.equals(notification.getEnterprise().getId()))) {
+            throw new ForbiddenException("This notification belongs to a different seller.");
+        }
         notification.setRead(true);
         return toResponse(notification);
     }

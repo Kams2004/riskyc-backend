@@ -2,13 +2,19 @@ package com.fashion.Riskyc.service;
 
 import com.fashion.Riskyc.dto.request.UpdatePosSettingsRequest;
 import com.fashion.Riskyc.dto.response.PosSettingsResponse;
+import com.fashion.Riskyc.entity.Enterprise;
 import com.fashion.Riskyc.entity.PosSettings;
 import com.fashion.Riskyc.exception.BadRequestException;
+import com.fashion.Riskyc.exception.ResourceNotFoundException;
+import com.fashion.Riskyc.repository.EnterpriseRepository;
 import com.fashion.Riskyc.repository.PosSettingsRepository;
+import com.fashion.Riskyc.security.CurrentAdmin;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
+
+import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -18,6 +24,7 @@ public class PosSettingsService {
     private static final String LOGO_FOLDER = "pos-settings";
 
     private final PosSettingsRepository posSettingsRepository;
+    private final EnterpriseRepository enterpriseRepository;
     private final S3MediaService s3MediaService;
 
     /**
@@ -42,6 +49,7 @@ public class PosSettingsService {
         settings.setFooterMessage(request.footerMessage());
         settings.setShowCashierName(request.showCashierName());
         settings.setShowSaleId(request.showSaleId());
+        settings.setShowLogo(request.showLogo());
         settings.setPaperWidth(request.paperWidth());
         settings.setCashEnabled(request.cashEnabled());
         settings.setOrangeMoneyEnabled(request.orangeMoneyEnabled());
@@ -58,10 +66,30 @@ public class PosSettingsService {
         return toResponse(settings);
     }
 
+    public PosSettingsResponse deleteLogo() {
+        PosSettings settings = getOrCreate();
+        if (settings.getLogoKey() != null) {
+            s3MediaService.delete(settings.getLogoKey());
+            settings.setLogoKey(null);
+        }
+        return toResponse(settings);
+    }
+
+    /** The caller's own till settings — their seller's row, or the platform row for unscoped staff. */
     private PosSettings getOrCreate() {
-        PosSettings existing = posSettingsRepository.findTheOnlyOne();
-        if (existing != null) return existing;
-        return posSettingsRepository.saveAndFlush(PosSettings.builder().build());
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        if (scopeId == null) {
+            return posSettingsRepository.findFirstByEnterpriseIsNull()
+                    .orElseGet(() -> posSettingsRepository.saveAndFlush(PosSettings.builder().build()));
+        }
+        return posSettingsRepository.findFirstByEnterpriseId(scopeId).orElseGet(() -> {
+            Enterprise enterprise = enterpriseRepository.findById(scopeId)
+                    .orElseThrow(() -> ResourceNotFoundException.of("Enterprise", scopeId));
+            return posSettingsRepository.saveAndFlush(PosSettings.builder()
+                    .enterprise(enterprise)
+                    .storeName(enterprise.getName())
+                    .build());
+        });
     }
 
     private PosSettingsResponse toResponse(PosSettings s) {
@@ -73,6 +101,7 @@ public class PosSettingsService {
                 s.getFooterMessage(),
                 s.isShowCashierName(),
                 s.isShowSaleId(),
+                s.isShowLogo(),
                 s.getPaperWidth(),
                 logoUrl,
                 s.isCashEnabled(),

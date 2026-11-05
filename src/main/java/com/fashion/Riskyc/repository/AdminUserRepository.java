@@ -11,4 +11,5 @@ public interface AdminUserRepository extends JpaRepository<AdminUser, UUID> {
     Optional<AdminUser> findByEmailIgnoreCase(String email);
     boolean existsByEmailIgnoreCase(String email);
     List<AdminUser> findByEnterpriseId(UUID enterpriseId);
+    long countByRoleId(UUID roleId);
 }

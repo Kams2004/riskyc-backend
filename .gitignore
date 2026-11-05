@@ -34,3 +34,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+# Local database backups — contain customer data, never commit
+backups/

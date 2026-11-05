@@ -44,6 +44,11 @@ public final class CurrentAdmin {
      * added for the marketplace pivot treats both the same way (unscoped).
      */
     public static UUID enterpriseIdOrNull() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        // A till's requests are scoped to its own shop exactly like that shop's admins.
+        if (auth != null && auth.getPrincipal() instanceof DevicePrincipal device) {
+            return device.enterpriseId() != null ? UUID.fromString(device.enterpriseId()) : null;
+        }
         return get().map(AdminPrincipal::enterpriseId).filter(java.util.Objects::nonNull).map(UUID::fromString).orElse(null);
     }
 }

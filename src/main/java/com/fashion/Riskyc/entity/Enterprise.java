@@ -59,6 +59,9 @@ public class Enterprise {
 
     private String contactPhone;
 
+    /** Shown to customers on this seller's products as a "Contact Supplier" WhatsApp link — distinct from {@link #contactPhone}, which is the applicant's own reachability detail for platform admins and isn't otherwise customer-facing. Digits only (country code included), no leading "+" — kept exactly as entered rather than normalized, since wa.me accepts either form. */
+    private String whatsappNumber;
+
     /** Questionnaire answer: what the applicant says they sell, in their own words. */
     @Column(columnDefinition = "TEXT")
     private String whatDoYouSell;

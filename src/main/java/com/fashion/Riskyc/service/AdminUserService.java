@@ -158,11 +158,34 @@ public class AdminUserService {
             throw new BadRequestException("This seller account is currently suspended. Please contact the platform.");
         }
         user.setLastLogin(Instant.now());
+        return issueSession(user);
+    }
+
+    /**
+     * Re-issues the caller's token from their role as it is now — permissions live inside the JWT, so this is how
+     * a role change reaches an already-signed-in POS without logging out. Same account checks as login().
+     */
+    public AdminLoginResponse refreshSession() {
+        UUID id = CurrentAdmin.idOrNull();
+        if (id == null) {
+            throw new BadRequestException("Not authenticated");
+        }
+        AdminUser user = getOrThrow(id);
+        if (user.getStatus() == AccountStatus.INACTIVE) {
+            throw new ForbiddenException("This account is inactive. Please contact an administrator.");
+        }
+        if (user.getEnterprise() != null && user.getEnterprise().getStatus() != EnterpriseStatus.ACTIVE) {
+            throw new ForbiddenException("This seller account is currently suspended. Please contact the platform.");
+        }
+        return issueSession(user);
+    }
+
+    private AdminLoginResponse issueSession(AdminUser user) {
         String token = jwtService.generateToken(user);
         Set<UUID> categoryIds = user.getEnterprise() != null
                 ? user.getEnterprise().getCategories().stream().map(c -> c.getId()).collect(Collectors.toUnmodifiableSet())
                 : Set.of();
-        return new AdminLoginResponse(token, toResponse(user), user.getRole().getPermissions(), user.isMustChangePassword(), categoryIds);
+        return new AdminLoginResponse(token, toResponse(user), RoleService.effectivePermissions(user), user.isMustChangePassword(), categoryIds);
     }
 
     private AdminUser getOrThrow(UUID id) {

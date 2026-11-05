@@ -3,6 +3,7 @@ package com.fashion.Riskyc.repository;
 import com.fashion.Riskyc.entity.Enterprise;
 import com.fashion.Riskyc.entity.EnterpriseStatus;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Query;
 
 import java.util.List;
 import java.util.Optional;
@@ -18,4 +19,7 @@ public interface EnterpriseRepository extends JpaRepository<Enterprise, UUID> {
 
     /** Subcategory ownership check: can this enterprise touch the given (top-level) category? */
     boolean existsByIdAndCategories_Id(UUID enterpriseId, UUID categoryId);
+
+    @Query("select count(e) from Enterprise e join e.categories c where c.id = :categoryId")
+    long countByCategoryId(UUID categoryId);
 }

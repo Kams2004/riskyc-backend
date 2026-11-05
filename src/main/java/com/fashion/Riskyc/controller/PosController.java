@@ -2,13 +2,16 @@ package com.fashion.Riskyc.controller;
 
 import com.fashion.Riskyc.dto.request.CreatePosSaleRequest;
 import com.fashion.Riskyc.dto.request.UpdatePosSettingsRequest;
+import com.fashion.Riskyc.dto.response.OrderResponse;
 import com.fashion.Riskyc.dto.response.PosCatalogResponse;
 import com.fashion.Riskyc.dto.response.PosReconciliationLineResponse;
 import com.fashion.Riskyc.dto.response.PosSaleResponse;
 import com.fashion.Riskyc.dto.response.PosSettingsResponse;
+import com.fashion.Riskyc.service.OrderService;
 import com.fashion.Riskyc.service.PosSaleService;
 import com.fashion.Riskyc.service.PosSettingsService;
-import com.fashion.Riskyc.service.ProductService;
+import com.fashion.Riskyc.service.PosCatalogEtag;
+import org.springframework.http.ResponseEntity;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
@@ -24,13 +27,14 @@ import java.util.UUID;
 public class PosController {
 
     private final PosSaleService posSaleService;
-    private final ProductService productService;
+    private final PosCatalogEtag posCatalogEtag;
     private final PosSettingsService posSettingsService;
+    private final OrderService orderService;
 
     /** What a POS terminal caches locally to browse/sell offline. */
     @GetMapping("/catalog")
-    public PosCatalogResponse catalog() {
-        return new PosCatalogResponse(Instant.now(), productService.listForPos());
+    public ResponseEntity<PosCatalogResponse> catalog(@RequestHeader(value = "If-None-Match", required = false) String ifNoneMatch) {
+        return posCatalogEtag.respond(ifNoneMatch);
     }
 
     /** The configurable ticket — store name/address/phone/footer/paper width/logo. Every cashier can read it (needed to render a receipt); only MANAGE_POS can change it. */
@@ -49,9 +53,20 @@ public class PosController {
         return posSettingsService.updateLogo(file);
     }
 
+    @DeleteMapping("/settings/logo")
+    public PosSettingsResponse deleteLogo() {
+        return posSettingsService.deleteLogo();
+    }
+
     @GetMapping("/sales")
     public List<PosSaleResponse> listSales() {
         return posSaleService.listAll();
+    }
+
+    /** Completed online orders, counted alongside till sales in the POS history and totals. */
+    @GetMapping("/online-sales")
+    public List<OrderResponse> listOnlineSales() {
+        return orderService.listCompletedForPos();
     }
 
     /** Sales whose stock decrement went negative — needs admin reconciliation. */

@@ -47,6 +47,11 @@ public class AdminUserController {
         return adminUserService.login(request);
     }
 
+    @PostMapping("/me/session")
+    public AdminLoginResponse refreshSession() {
+        return adminUserService.refreshSession();
+    }
+
     @PostMapping("/me/change-password")
     public ResponseEntity<Void> changeOwnPassword(@Valid @RequestBody ChangePasswordRequest request) {
         adminUserService.changeOwnPassword(request);

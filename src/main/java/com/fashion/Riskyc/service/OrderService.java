@@ -89,6 +89,17 @@ public class OrderService {
         return orders.stream().map(this::toResponse).toList();
     }
 
+    /** Online orders that finished the flow (PACKAGED), shown on the POS as completed sales — same enterprise scoping as listAll(). */
+    @Transactional(readOnly = true)
+    public List<OrderResponse> listCompletedForPos() {
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        List<OrderStatus> statuses = List.of(OrderStatus.PACKAGED);
+        List<Order> orders = scopeId == null
+                ? orderRepository.findByStatusInOrderByCreatedAtDesc(statuses)
+                : orderRepository.findByEnterpriseIdAndStatusInOrderByCreatedAtDesc(scopeId, statuses);
+        return orders.stream().map(this::toResponse).toList();
+    }
+
     /**
      * The Packing queue — validated orders waiting to be packed, orders
      * currently being packed, and orders already packaged — scoped
@@ -138,6 +149,36 @@ public class OrderService {
      * All resulting Orders share a freshly-generated checkoutGroupId so the
      * confirmation screen and tracking page can present them as one purchase.
      */
+    /**
+     * Lets checkout confirm every line is still in stock BEFORE the customer sends a mobile-money payment —
+     * otherwise a sold-out item is only discovered at order creation, after they've already paid.
+     * Same product/suspension/stock rules as create(), quantities summed per (product, color, size).
+     */
+    @Transactional(readOnly = true)
+    public void checkAvailability(List<OrderItemRequest> items) {
+        Map<String, Integer> totals = new LinkedHashMap<>();
+        Map<String, Product> products = new LinkedHashMap<>();
+        for (OrderItemRequest itemReq : items) {
+            Product product = productRepository.findById(itemReq.productId())
+                    .orElseThrow(() -> new BadRequestException("Product not found: " + itemReq.productId()));
+            if (product.getEnterprise() != null && product.getEnterprise().getStatus() == EnterpriseStatus.SUSPENDED) {
+                throw new BadRequestException("This product is no longer available: " + product.getName());
+            }
+            String key = product.getId() + "::" + orEmpty(itemReq.selectedColor()) + "::" + orEmpty(itemReq.selectedSize());
+            totals.merge(key, itemReq.quantity(), Integer::sum);
+            products.putIfAbsent(key, product);
+        }
+        totals.forEach((key, quantity) -> {
+            String[] parts = key.split("::", -1);
+            Product product = products.get(key);
+            try {
+                productVariantService.requireAvailable(product, parts[1], parts[2], quantity);
+            } catch (ConflictException e) {
+                throw new ConflictException(product.getName() + ": " + e.getMessage());
+            }
+        });
+    }
+
     public List<OrderResponse> create(CreateOrderRequest request) {
         Customer customer = null;
         if (request.customerId() != null) {
@@ -258,7 +299,8 @@ public class OrderService {
         for (Order order : orders) {
             Order saved = orderRepository.saveAndFlush(order);
             notificationService.notifyAdmin(NotificationType.NEW_ORDER,
-                    "New order placed for " + formatAmount(saved.getTotal()) + " XAF", saved.getId().toString());
+                    "New order placed for " + formatAmount(saved.getTotal()) + " XAF", saved.getId().toString(),
+                    saved.getEnterprise() != null ? saved.getEnterprise().getId() : null);
             responses.add(toResponse(saved));
         }
         return responses;
@@ -282,7 +324,8 @@ public class OrderService {
         order.setStatus(OrderStatus.REVIEWING);
         OrderResponse response = toResponse(order);
         notificationService.notifyAdmin(NotificationType.PAYMENT_PROOF_UPLOADED,
-                "Payment proof uploaded for order " + orderId, orderId.toString());
+                "Payment proof uploaded for order " + orderId, orderId.toString(),
+                order.getEnterprise() != null ? order.getEnterprise().getId() : null);
         pushNotificationService.notifyOrder(orderId,
                 new LocalizedText("Payment proof received", "Preuve de paiement reçue"),
                 new LocalizedText("We're reviewing your payment — tap to track your order.",
@@ -306,13 +349,15 @@ public class OrderService {
     }
 
     public OrderResponse updateStatus(UUID orderId, OrderStatus status, String reason) {
-        Order order = getOrThrow(orderId);
+        Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow(() -> ResourceNotFoundException.of("Order", orderId));
         requireOwnedOrPlatform(order);
+        requireAllowedTransition(order.getStatus(), status);
         order.setStatus(status);
         order.setStatusChangedByName(CurrentAdmin.nameOrNull());
         order.setStatusChangedAt(Instant.now());
         if (status == OrderStatus.CANCELLED) {
             order.setRejectionReason(reason);
+            restoreStock(order);
         }
         OrderResponse response = toResponse(order);
         if (order.getCustomer() != null) {
@@ -344,6 +389,38 @@ public class OrderService {
         }
         messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
         return response;
+    }
+
+    /**
+     * Manual status changes from the admin's order screens. Packing/packed only come from start/completePackaging
+     * (which record who packed it and when, and what counts it as a sale); once validated an order can only be
+     * cancelled; and packing, packed or cancelled orders are final here — a cancelled order's stock has already
+     * been returned, so reopening it would sell items that may no longer exist.
+     */
+    private void requireAllowedTransition(OrderStatus from, OrderStatus to) {
+        if (from == to) return;
+        if (to == OrderStatus.PACKAGING || to == OrderStatus.PACKAGED) {
+            throw new ConflictException("Use Start packaging / Mark as packaged to move an order into packing.");
+        }
+        switch (from) {
+            case CANCELLED -> throw new ConflictException("This order was cancelled and can't be reopened — the customer needs to order again.");
+            case PACKAGING, PACKAGED -> throw new ConflictException("This order is already " + from.name().toLowerCase() + " and can't be changed here.");
+            case VALIDATED -> {
+                if (to != OrderStatus.CANCELLED) {
+                    throw new ConflictException("A validated order can only be cancelled.");
+                }
+            }
+            default -> { }
+        }
+    }
+
+    /** Puts a cancelled order's items back in stock — the same stock the till sells from. */
+    private void restoreStock(Order order) {
+        for (OrderItem item : order.getItems()) {
+            if (item.getProduct() == null) continue; // product deleted since — nothing to restore against
+            ProductVariant variant = productVariantService.resolveForUpdate(item.getProduct(), item.getSelectedColor(), item.getSelectedSize());
+            productVariantService.restock(variant, item.getQuantity());
+        }
     }
 
     /**

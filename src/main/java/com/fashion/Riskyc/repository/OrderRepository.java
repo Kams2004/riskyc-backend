@@ -4,6 +4,7 @@ import com.fashion.Riskyc.entity.Order;
 import com.fashion.Riskyc.entity.OrderStatus;
 import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
 
@@ -32,4 +33,9 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select o from Order o where o.id = :id")
     Optional<Order> findByIdForUpdate(UUID id);
+
+    /** Orders keep their own customerInfo snapshot, so they stay readable after the customer account is deleted. */
+    @Modifying
+    @Query("update Order o set o.customer = null where o.customer.id = :customerId")
+    void detachCustomer(UUID customerId);
 }

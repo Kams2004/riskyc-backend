@@ -41,6 +41,11 @@ public class Notification {
     @Column(nullable = false)
     private String message;
 
+    /** For an ADMIN notification about one seller's order: that seller. Null means platform staff only. */
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "enterprise_id")
+    private Enterprise enterprise;
+
     /** Id of the order/conversation/etc. this notification is about, for deep-linking. */
     private String referenceId;
 

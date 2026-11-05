@@ -238,7 +238,7 @@ public class PosSaleService {
         for (PosSaleItem item : sale.getItems()) {
             if (item.getProduct() == null) continue; // product since deleted — nothing to restore stock against
             ProductVariant variant = productVariantService.resolveForUpdate(item.getProduct(), item.getSelectedColor(), item.getSelectedSize());
-            variant.setQuantity(variant.getQuantity() + item.getQuantity());
+            productVariantService.restock(variant, item.getQuantity());
         }
         sale.setVoided(true);
         sale.setVoidedByName(CurrentAdmin.nameOrNull());

@@ -30,6 +30,8 @@ public record ProductResponse(
         List<BulkPriceTierResponse> bulkPrices,
         /** Presigned URLs already resolved — zero extra round-trips for the client. */
         List<MediaResponse> media,
+        /** Null only for a migration-backfilled product never assigned an Enterprise — see Product#enterprise's javadoc. */
+        SellerSummaryResponse seller,
         String createdByName,
         Instant createdAt,
         Instant updatedAt

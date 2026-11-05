@@ -2,12 +2,15 @@ package com.fashion.Riskyc.service;
 
 import com.fashion.Riskyc.dto.request.RoleRequest;
 import com.fashion.Riskyc.dto.response.RoleResponse;
+import com.fashion.Riskyc.entity.AdminUser;
 import com.fashion.Riskyc.entity.Enterprise;
 import com.fashion.Riskyc.entity.Permission;
 import com.fashion.Riskyc.entity.Role;
 import com.fashion.Riskyc.exception.BadRequestException;
+import com.fashion.Riskyc.exception.ConflictException;
 import com.fashion.Riskyc.exception.ForbiddenException;
 import com.fashion.Riskyc.exception.ResourceNotFoundException;
+import com.fashion.Riskyc.repository.AdminUserRepository;
 import com.fashion.Riskyc.repository.EnterpriseRepository;
 import com.fashion.Riskyc.repository.RoleRepository;
 import lombok.RequiredArgsConstructor;
@@ -28,9 +31,25 @@ public class RoleService {
 
     private final RoleRepository roleRepository;
     private final EnterpriseRepository enterpriseRepository;
+    private final AdminUserRepository adminUserRepository;
 
-    /** Gate the platform's own seller-review/suspend endpoints — see requireNoPlatformOnlyPermissionsWhenScoped() below for why a scoped role can never hold these. */
-    private static final Set<Permission> PLATFORM_ONLY_PERMISSIONS = Set.of(Permission.VIEW_ENTERPRISES, Permission.MANAGE_ENTERPRISES);
+    /**
+     * Permissions whose endpoints are platform-wide with no per-seller scoping (seller review, every customer,
+     * every chat, homepage publicity) — a seller's role can never be granted them, and effectivePermissions()
+     * strips them at token issue time in case an older seller role still holds one.
+     */
+    public static final Set<Permission> PLATFORM_ONLY_PERMISSIONS = Set.of(
+            Permission.VIEW_ENTERPRISES, Permission.MANAGE_ENTERPRISES,
+            Permission.VIEW_CUSTOMERS, Permission.MANAGE_CUSTOMERS,
+            Permission.VIEW_CHAT, Permission.MANAGE_CHAT,
+            Permission.VIEW_PUBLICITY, Permission.MANAGE_PUBLICITY);
+
+    /** What an admin can actually do: their role's permissions, minus platform-only ones for a seller's staff. */
+    public static Set<Permission> effectivePermissions(AdminUser user) {
+        Set<Permission> permissions = new HashSet<>(user.getRole().getPermissions());
+        if (user.getEnterprise() != null) permissions.removeAll(PLATFORM_ONLY_PERMISSIONS);
+        return permissions;
+    }
 
     /** Platform staff see every platform-wide role (never another enterprise's); a scoped admin sees only their own enterprise's roles. */
     @Transactional(readOnly = true)
@@ -166,6 +185,11 @@ public class RoleService {
     public void delete(UUID id) {
         Role role = getOrThrow(id);
         requireOwnedOrPlatform(role);
+        long assigned = adminUserRepository.countByRoleId(id);
+        if (assigned > 0) {
+            throw new ConflictException("This role is still assigned to " + assigned + (assigned == 1 ? " user" : " users")
+                    + " — give them another role first.");
+        }
         roleRepository.deleteById(id);
     }
 

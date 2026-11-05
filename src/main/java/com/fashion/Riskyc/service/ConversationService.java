@@ -15,6 +15,7 @@ import com.fashion.Riskyc.repository.ConversationRepository;
 import com.fashion.Riskyc.repository.CustomerRepository;
 import com.fashion.Riskyc.repository.DeliveryContactRepository;
 import com.fashion.Riskyc.repository.OrderRepository;
+import com.fashion.Riskyc.exception.ForbiddenException;
 import com.fashion.Riskyc.security.CurrentAdmin;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
@@ -120,6 +121,7 @@ public class ConversationService {
      */
     public ChatMessageResponse sendPackagingConfirmation(UUID orderId, String text, MultipartFile image) {
         Order order = orderRepository.findById(orderId).orElseThrow(() -> ResourceNotFoundException.of("Order", orderId));
+        requireOrderOwnedOrPlatform(order);
         Conversation conversation = findOrCreateConversationForOrder(order);
 
         // Sending a second one silently "replaces" what the customer sees as
@@ -182,6 +184,7 @@ public class ConversationService {
      * roster is, same as the first send.
      */
     public void deletePackagingConfirmation(UUID orderId) {
+        requireOrderOwnedOrPlatform(orderRepository.findById(orderId).orElseThrow(() -> ResourceNotFoundException.of("Order", orderId)));
         Conversation conversation = conversationRepository.findByOrder_Id(orderId)
                 .orElseThrow(() -> ResourceNotFoundException.of("Conversation for order", orderId));
         ChatMessage message = chatMessageRepository
@@ -366,6 +369,15 @@ public class ConversationService {
             if (m.getVoiceStorageKey() != null) s3MediaService.delete(m.getVoiceStorageKey());
         });
         conversationRepository.delete(conversation);
+    }
+
+    /** A seller's admin may only message about their own shop's orders — same rule as OrderService. */
+    private void requireOrderOwnedOrPlatform(Order order) {
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        if (scopeId == null) return;
+        if (order.getEnterprise() == null || !scopeId.equals(order.getEnterprise().getId())) {
+            throw new ForbiddenException("This order belongs to a different seller.");
+        }
     }
 
     private Conversation getOrThrow(UUID id) {

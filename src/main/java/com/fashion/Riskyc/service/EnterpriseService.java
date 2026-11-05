@@ -75,6 +75,7 @@ public class EnterpriseService {
                 .contactLastName(request.contactLastName())
                 .contactEmail(request.contactEmail())
                 .contactPhone(request.contactPhone())
+                .whatsappNumber(request.whatsappNumber())
                 .whatDoYouSell(request.whatDoYouSell())
                 .estimatedCatalogSize(request.estimatedCatalogSize())
                 .status(EnterpriseStatus.PENDING)
@@ -269,7 +270,7 @@ public class EnterpriseService {
         return new EnterpriseResponse(
                 enterprise.getId(), enterprise.getName(), enterprise.getDescription(), enterprise.getBusinessType(),
                 enterprise.getStatus(), enterprise.getContactFirstName(), enterprise.getContactLastName(),
-                enterprise.getContactEmail(), enterprise.getContactPhone(), enterprise.getWhatDoYouSell(),
+                enterprise.getContactEmail(), enterprise.getContactPhone(), enterprise.getWhatsappNumber(), enterprise.getWhatDoYouSell(),
                 enterprise.getEstimatedCatalogSize(), categories, suggested,
                 enterprise.getApprovedByName(), enterprise.getApprovedAt(), enterprise.getCreatedAt()
         );

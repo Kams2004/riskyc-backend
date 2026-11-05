@@ -1,6 +1,7 @@
 package com.fashion.Riskyc.controller;
 
 import com.fashion.Riskyc.dto.request.AttachCustomerRequest;
+import com.fashion.Riskyc.dto.request.CheckAvailabilityRequest;
 import com.fashion.Riskyc.dto.request.CreateOrderRequest;
 import com.fashion.Riskyc.dto.request.SetPaymentMethodRequest;
 import com.fashion.Riskyc.dto.request.UpdateOrderStatusRequest;
@@ -53,6 +54,13 @@ public class OrderController {
     @PostMapping
     public ResponseEntity<List<OrderResponse>> create(@Valid @RequestBody CreateOrderRequest request) {
         return ResponseEntity.status(201).body(orderService.create(request));
+    }
+
+    /** 204 when every line is in stock; 409 with the same "Sold out" message create() would give. Called before payment. */
+    @PostMapping("/check-availability")
+    public ResponseEntity<Void> checkAvailability(@Valid @RequestBody CheckAvailabilityRequest request) {
+        orderService.checkAvailability(request.items());
+        return ResponseEntity.noContent().build();
     }
 
     @PostMapping("/{id}/payment-method")

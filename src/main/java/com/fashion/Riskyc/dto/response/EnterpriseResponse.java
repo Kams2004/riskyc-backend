@@ -16,6 +16,7 @@ public record EnterpriseResponse(
         String contactLastName,
         String contactEmail,
         String contactPhone,
+        String whatsappNumber,
         String whatDoYouSell,
         String estimatedCatalogSize,
         List<CategorySummaryResponse> categories,

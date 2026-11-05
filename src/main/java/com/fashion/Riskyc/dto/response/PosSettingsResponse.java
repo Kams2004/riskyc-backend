@@ -9,6 +9,7 @@ public record PosSettingsResponse(
         String footerMessage,
         boolean showCashierName,
         boolean showSaleId,
+        boolean showLogo,
         ReceiptPaperWidth paperWidth,
         String logoUrl,
         boolean cashEnabled,

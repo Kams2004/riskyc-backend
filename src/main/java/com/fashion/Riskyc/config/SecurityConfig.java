@@ -1,6 +1,8 @@
 package com.fashion.Riskyc.config;
 
+import com.fashion.Riskyc.security.DeviceAuthenticationFilter;
 import com.fashion.Riskyc.security.JwtAuthenticationFilter;
+import com.fashion.Riskyc.service.PosDeviceService;
 import com.fashion.Riskyc.security.JwtService;
 import tools.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -36,6 +38,7 @@ import java.util.Map;
 public class SecurityConfig {
 
     private final JwtService jwtService;
+    private final PosDeviceService posDeviceService;
     private final ObjectMapper objectMapper;
 
     private static final String P_VIEW_PRODUCTS = "PERM_VIEW_PRODUCTS";
@@ -160,14 +163,21 @@ public class SecurityConfig {
 
                         // ── POS (the physical till) — no public routes at all, unlike every
                         // other area above; a terminal always authenticates as a staff admin. ──
+                        // Tills (desktop app): enrolment uses a one-time code; everything else a till does runs on
+                        // its own device token (ROLE_POS_DEVICE), never a cashier login.
+                        .requestMatchers(HttpMethod.POST, "/api/pos/devices/enroll").permitAll()
+                        .requestMatchers("/api/pos/devices/**", "/api/pos/devices").hasAuthority(P_MANAGE_POS)
+                        .requestMatchers("/api/pos/device/**").hasAuthority(DeviceAuthenticationFilter.AUTHORITY)
                         .requestMatchers(HttpMethod.GET, "/api/pos/catalog").hasAuthority(P_VIEW_POS)
                         .requestMatchers(HttpMethod.GET, "/api/pos/settings").hasAuthority(P_VIEW_POS)
                         .requestMatchers(HttpMethod.PATCH, "/api/pos/settings").hasAuthority(P_MANAGE_POS)
                         .requestMatchers(HttpMethod.POST, "/api/pos/settings/logo").hasAuthority(P_MANAGE_POS)
+                        .requestMatchers(HttpMethod.DELETE, "/api/pos/settings/logo").hasAuthority(P_MANAGE_POS)
                         .requestMatchers(HttpMethod.GET, "/api/pos/sales/flagged").hasAuthority(P_VIEW_POS)
                         .requestMatchers(HttpMethod.GET, "/api/pos/reconciliation").hasAuthority(P_VIEW_POS)
                         .requestMatchers(HttpMethod.POST, "/api/pos/reconciliation/*/resolve").hasAuthority(P_MANAGE_POS)
                         .requestMatchers(HttpMethod.GET, "/api/pos/sales").hasAuthority(P_VIEW_POS)
+                        .requestMatchers(HttpMethod.GET, "/api/pos/online-sales").hasAuthority(P_VIEW_POS)
                         .requestMatchers(HttpMethod.POST, "/api/pos/sales/*/void").hasAuthority(P_VOID_POS_SALE)
                         .requestMatchers(HttpMethod.POST, "/api/pos/sales/*/receipt").hasAuthority(P_MANAGE_POS)
                         .requestMatchers(HttpMethod.POST, "/api/pos/sales").hasAuthority(P_MANAGE_POS)
@@ -182,6 +192,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/media/**").permitAll()
                         .requestMatchers(HttpMethod.HEAD, "/api/media/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/orders").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/orders/check-availability").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/orders/*/payment-method", "/api/orders/*/payment-proof", "/api/orders/*/attach-customer").permitAll()
                         // Must be declared before the GET /api/orders/{id} permitAll rule
                         // below, which would otherwise also match this literal segment and
@@ -236,6 +247,7 @@ public class SecurityConfig {
                         // clear their own forced-change flag before they have any other
                         // permission at all. Declared before the generic POST rule below.
                         .requestMatchers(HttpMethod.POST, "/api/admin-users/me/change-password").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/admin-users/me/session").authenticated()
                         .requestMatchers(HttpMethod.GET, "/api/admin-users/**", "/api/roles/**").hasAuthority(P_VIEW_USERS)
                         .requestMatchers(HttpMethod.POST, "/api/admin-users/**", "/api/roles/**").hasAuthority(P_MANAGE_USERS)
                         .requestMatchers(HttpMethod.PUT, "/api/admin-users/**", "/api/roles/**").hasAuthority(P_MANAGE_USERS)
@@ -251,7 +263,8 @@ public class SecurityConfig {
 
                         .anyRequest().authenticated()
                 )
-                .addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class);
+                .addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class)
+                .addFilterBefore(new DeviceAuthenticationFilter(posDeviceService), UsernamePasswordAuthenticationFilter.class);
         return http.build();
     }
 

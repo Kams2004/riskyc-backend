@@ -39,12 +39,12 @@ public class ProductVariantService {
     }
 
     /**
-     * Locks and resolves the variant for one order/sale line, creating it
-     * (quantity 0, untracked false) if this exact color+size combination
-     * has never been seen before — e.g. an admin added a new size after
-     * this feature shipped, without yet visiting the stock editor. Starting
-     * at 0 (sold out) rather than unlimited is deliberate: a combination
-     * nobody has stocked should not be silently orderable.
+     * Locks and resolves the variant for one order/sale line, creating it if
+     * this exact color+size combination has never been seen before. On a
+     * product whose stock is tracked, a new combination starts at 0 (sold
+     * out) — nobody has stocked it. On a product that never had any
+     * quantity entered, it's created untracked (always available), matching
+     * how the storefront and POS already display such products.
      */
     public ProductVariant resolveForUpdate(Product product, String colorName, String size) {
         ProductVariant existing = findOrCreate(product, colorName, size);
@@ -61,21 +61,55 @@ public class ProductVariantService {
                         .colorName(color)
                         .size(sz)
                         .quantity(0)
+                        .untracked(!variantRepository.existsByProductIdAndUntrackedFalse(product.getId()))
                         .build()));
     }
 
-    /** Online checkout path — rejects outright if there isn't enough, unless this variant is still flagged "untracked" (migration sentinel), in which case it behaves like the old stock==null convention: always allowed. */
+    // Untracked (unlimited) variants are never counted down or up, so their stored quantity stays a meaningless 0
+    // instead of drifting negative — admin stock editors would otherwise show, and could save, that figure.
+
+    /** Online checkout path — rejects outright if there isn't enough; an untracked variant is always allowed. */
     public void decrementStrict(ProductVariant variant, int quantity) {
-        if (!variant.isUntracked() && variant.getQuantity() < quantity) {
+        if (variant.isUntracked()) return;
+        if (variant.getQuantity() < quantity) {
             throw new ConflictException(describe(variant) + " — only " + variant.getQuantity() + " left");
         }
         variant.setQuantity(variant.getQuantity() - quantity);
     }
 
-    /** POS offline-sync path — a completed in-person sale is a historical fact and is never rejected or undone on stock grounds; returns true if this decrement pushed the variant negative, so the caller can flag the sale for reconciliation. */
+    /** POS offline-sync path — a completed in-person sale is a historical fact and is never rejected or undone on stock grounds; returns true if this decrement pushed a tracked variant negative, so the caller can flag the sale for reconciliation. */
     public boolean decrementAllowingNegative(ProductVariant variant, int quantity) {
+        if (variant.isUntracked()) return false;
         variant.setQuantity(variant.getQuantity() - quantity);
         return variant.getQuantity() < 0;
+    }
+
+    /**
+     * Read-only stock check used before a customer pays — same rule as resolveForUpdate + decrementStrict, but it
+     * never locks or creates a row. Throws the same "Sold out" message checkout would.
+     */
+    @Transactional(readOnly = true)
+    public void requireAvailable(Product product, String colorName, String size, int quantity) {
+        String color = colorName != null ? colorName : "";
+        String sz = size != null ? size : "";
+        ProductVariant variant = variantRepository.findByProductIdAndColorNameAndSize(product.getId(), color, sz).orElse(null);
+        if (variant == null) {
+            if (!variantRepository.existsByProductIdAndUntrackedFalse(product.getId())) return;
+            variant = ProductVariant.builder().colorName(color).size(sz).quantity(0).build();
+        }
+        if (!variant.isUntracked() && variant.getQuantity() < quantity) {
+            throw new ConflictException(describe(variant) + " — only " + Math.max(0, variant.getQuantity()) + " left");
+        }
+    }
+
+    /** Puts stock back after a voided/cancelled sale. */
+    public void restock(ProductVariant variant, int quantity) {
+        if (variant.isUntracked()) return;
+        variant.setQuantity(variant.getQuantity() + quantity);
+    }
+
+    public void deleteAllForProduct(UUID productId) {
+        variantRepository.deleteByProductId(productId);
     }
 
     private String describe(ProductVariant v) {

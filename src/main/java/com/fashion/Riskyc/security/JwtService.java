@@ -3,6 +3,7 @@ package com.fashion.Riskyc.security;
 import com.fashion.Riskyc.config.JwtProperties;
 import com.fashion.Riskyc.entity.AdminUser;
 import com.fashion.Riskyc.entity.Permission;
+import com.fashion.Riskyc.service.RoleService;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import io.jsonwebtoken.Jwts;
@@ -45,7 +46,7 @@ public class JwtService {
         Instant now = Instant.now();
         Instant expiry = now.plus(jwtProperties.getExpirationMinutes(), ChronoUnit.MINUTES);
 
-        List<String> permissionNames = user.getRole().getPermissions().stream()
+        List<String> permissionNames = RoleService.effectivePermissions(user).stream()
                 .map(Enum::name)
                 .toList();
 

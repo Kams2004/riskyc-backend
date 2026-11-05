@@ -7,6 +7,8 @@ import com.fashion.Riskyc.dto.response.ProductAuditLogResponse;
 import com.fashion.Riskyc.dto.response.ProductColorResponse;
 import com.fashion.Riskyc.dto.response.ProductResponse;
 import com.fashion.Riskyc.dto.response.ProductVariantResponse;
+import com.fashion.Riskyc.dto.response.SellerSummaryResponse;
+import com.fashion.Riskyc.entity.Enterprise;
 import com.fashion.Riskyc.entity.*;
 import com.fashion.Riskyc.exception.BadRequestException;
 import com.fashion.Riskyc.exception.ForbiddenException;
@@ -14,6 +16,7 @@ import com.fashion.Riskyc.exception.ResourceNotFoundException;
 import com.fashion.Riskyc.repository.CategoryRepository;
 import com.fashion.Riskyc.repository.EnterpriseRepository;
 import com.fashion.Riskyc.repository.OrderItemRepository;
+import com.fashion.Riskyc.repository.PosSaleItemRepository;
 import com.fashion.Riskyc.repository.ProductAuditLogRepository;
 import com.fashion.Riskyc.repository.ProductMediaRepository;
 import com.fashion.Riskyc.repository.ProductRepository;
@@ -57,6 +60,7 @@ public class ProductService {
     private final CategoryRepository categoryRepository;
     private final SubcategoryRepository subcategoryRepository;
     private final OrderItemRepository orderItemRepository;
+    private final PosSaleItemRepository posSaleItemRepository;
     private final S3MediaService s3MediaService;
     private final TranslationService translationService;
     private final ProductVariantService productVariantService;
@@ -169,6 +173,8 @@ public class ProductService {
         // still leaves old orders fully readable — just no longer linked to a
         // live product row.
         orderItemRepository.detachProduct(id);
+        posSaleItemRepository.detachProduct(id);
+        productVariantService.deleteAllForProduct(id);
         product.getMedia().forEach(m -> s3MediaService.delete(m.getStorageKey()));
         logAudit(product, ProductAuditSection.DELETED, "Deleted the product");
         productRepository.delete(product);
@@ -200,7 +206,7 @@ public class ProductService {
             product.setDescriptionFr(translationService.translateToFrench(request.description()));
         }
 
-        Category category = resolveCategory(request.categorySlug());
+        Category category = resolveCategory(product.getEnterprise(), request.categorySlug());
         Subcategory subcategory = resolveSubcategory(category, request.subcategorySlug());
         boolean categoryChanged = product.getCategory() == null || !Objects.equals(product.getCategory().getSlug(), category.getSlug());
         boolean subcategoryChanged = !Objects.equals(
@@ -392,7 +398,7 @@ public class ProductService {
     }
 
     private void applyRequest(Product product, ProductRequest request) {
-        Category category = resolveCategory(request.categorySlug());
+        Category category = resolveCategory(product.getEnterprise(), request.categorySlug());
         Subcategory subcategory = resolveSubcategory(category, request.subcategorySlug());
 
         String previousName = product.getName();
@@ -470,9 +476,25 @@ public class ProductService {
         product.getColors().addAll(merged);
     }
 
-    private Category resolveCategory(String categorySlug) {
-        return categoryRepository.findBySlug(categorySlug)
+    /**
+     * A scoped seller may only list products under a top-level Category their
+     * enterprise was actually approved for (see EnterpriseService#approve()) —
+     * the create/edit form offering every platform category regardless of
+     * scope was a gap found during the marketplace hardening review; this is
+     * the enforcement side of it. Platform staff (no scope) are unrestricted,
+     * same posture as requireOwnedOrPlatform(). `enterprise` is always
+     * non-null whenever the caller is scoped: create() resolves it before
+     * this runs, and update() already passed requireOwnedOrPlatform(), which
+     * itself requires a non-null, matching enterprise for a scoped admin.
+     */
+    private Category resolveCategory(Enterprise enterprise, String categorySlug) {
+        Category category = categoryRepository.findBySlug(categorySlug)
                 .orElseThrow(() -> new BadRequestException("Unknown category: " + categorySlug));
+        UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
+        if (scopeId != null && enterprise.getCategories().stream().noneMatch(c -> c.getId().equals(category.getId()))) {
+            throw new ForbiddenException("Your shop isn't approved to list products under \"" + category.getName() + "\".");
+        }
+        return category;
     }
 
     private Subcategory resolveSubcategory(Category category, String subcategorySlug) {
@@ -526,6 +548,10 @@ public class ProductService {
         List<ProductVariantResponse> variants = p.getVariants().stream()
                 .map(v -> new ProductVariantResponse(v.getId(), v.getColorName(), v.getSize(), v.getQuantity(), v.isUntracked()))
                 .toList();
+        Enterprise enterprise = p.getEnterprise();
+        SellerSummaryResponse seller = enterprise == null
+                ? null
+                : new SellerSummaryResponse(enterprise.getName(), enterprise.getContactPhone(), enterprise.getWhatsappNumber());
 
         return new ProductResponse(
                 p.getId(),
@@ -550,6 +576,7 @@ public class ProductService {
                 variants,
                 bulkPrices,
                 media,
+                seller,
                 p.getCreatedByName(),
                 p.getCreatedAt(),
                 p.getUpdatedAt()

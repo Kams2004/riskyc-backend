@@ -90,7 +90,7 @@ public class DataSeeder implements CommandLineRunner {
         roleRepository.save(Role.builder()
                 .name("Cashier")
                 .description("Rings up in-person sales at the point of sale")
-                .permissions(Set.of(Permission.VIEW_POS, Permission.MANAGE_POS))
+                .permissions(Set.of(Permission.VIEW_POS, Permission.POS_SELL, Permission.POS_VIEW_SALES))
                 .build());
         log.info("Seeded default Cashier role");
     }

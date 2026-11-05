@@ -71,6 +71,9 @@ public class SecurityConfig {
     private static final String P_VIEW_POS = "PERM_VIEW_POS";
     private static final String P_MANAGE_POS = "PERM_MANAGE_POS";
     private static final String P_VOID_POS_SALE = "PERM_VOID_POS_SALE";
+    private static final String P_POS_SELL = "PERM_POS_SELL";
+    private static final String P_POS_VIEW_SALES = "PERM_POS_VIEW_SALES";
+    private static final String P_POS_RECONCILE = "PERM_POS_RECONCILE";
     private static final String P_VIEW_ENTERPRISES = "PERM_VIEW_ENTERPRISES";
     private static final String P_MANAGE_ENTERPRISES = "PERM_MANAGE_ENTERPRISES";
 
@@ -173,14 +176,14 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.PATCH, "/api/pos/settings").hasAuthority(P_MANAGE_POS)
                         .requestMatchers(HttpMethod.POST, "/api/pos/settings/logo").hasAuthority(P_MANAGE_POS)
                         .requestMatchers(HttpMethod.DELETE, "/api/pos/settings/logo").hasAuthority(P_MANAGE_POS)
-                        .requestMatchers(HttpMethod.GET, "/api/pos/sales/flagged").hasAuthority(P_VIEW_POS)
-                        .requestMatchers(HttpMethod.GET, "/api/pos/reconciliation").hasAuthority(P_VIEW_POS)
-                        .requestMatchers(HttpMethod.POST, "/api/pos/reconciliation/*/resolve").hasAuthority(P_MANAGE_POS)
-                        .requestMatchers(HttpMethod.GET, "/api/pos/sales").hasAuthority(P_VIEW_POS)
-                        .requestMatchers(HttpMethod.GET, "/api/pos/online-sales").hasAuthority(P_VIEW_POS)
+                        .requestMatchers(HttpMethod.GET, "/api/pos/sales/flagged").hasAnyAuthority(P_POS_VIEW_SALES, P_POS_RECONCILE)
+                        .requestMatchers(HttpMethod.GET, "/api/pos/reconciliation").hasAuthority(P_POS_RECONCILE)
+                        .requestMatchers(HttpMethod.POST, "/api/pos/reconciliation/*/resolve").hasAuthority(P_POS_RECONCILE)
+                        .requestMatchers(HttpMethod.GET, "/api/pos/sales").hasAuthority(P_POS_VIEW_SALES)
+                        .requestMatchers(HttpMethod.GET, "/api/pos/online-sales").hasAuthority(P_POS_VIEW_SALES)
                         .requestMatchers(HttpMethod.POST, "/api/pos/sales/*/void").hasAuthority(P_VOID_POS_SALE)
-                        .requestMatchers(HttpMethod.POST, "/api/pos/sales/*/receipt").hasAuthority(P_MANAGE_POS)
-                        .requestMatchers(HttpMethod.POST, "/api/pos/sales").hasAuthority(P_MANAGE_POS)
+                        .requestMatchers(HttpMethod.POST, "/api/pos/sales/*/receipt").hasAuthority(P_POS_SELL)
+                        .requestMatchers(HttpMethod.POST, "/api/pos/sales").hasAuthority(P_POS_SELL)
 
                         // ── Always public (storefront + checkout + chat) ──
                         .requestMatchers(HttpMethod.GET, "/api/products", "/api/products/{id}").permitAll()

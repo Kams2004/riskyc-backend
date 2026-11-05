@@ -40,9 +40,16 @@ public enum Permission {
     /** The promotional image/video carousel shown on the mobile home screen. */
     VIEW_PUBLICITY,
     MANAGE_PUBLICITY,
-    /** The physical point-of-sale till — ring up in-person sales, browse the POS catalog. */
+    /** Open the point-of-sale app at all (sign in, read the catalog and ticket settings). Each screen has its own permission below. */
     VIEW_POS,
+    /** Register Settings: ticket, printer, payment methods, and enrolling/revoking desktop tills. */
     MANAGE_POS,
+    /** The Sale screen: ring up and charge in-person sales. */
+    POS_SELL,
+    /** Sales History: every till sale and completed online order. */
+    POS_VIEW_SALES,
+    /** Reconciliation: review and resolve sales that sold more than the recorded stock. */
+    POS_RECONCILE,
     /** Reverse a completed POS sale and restore its stock — split out the same way UPDATE_PRODUCT_STOCK is split from UPDATE_PRODUCT_COLORS, so a cashier role can ring up sales without being able to void one. */
     VOID_POS_SALE,
     /** See/review seller applications and the full enterprise list — platform-only, never granted to an enterprise-scoped role. */

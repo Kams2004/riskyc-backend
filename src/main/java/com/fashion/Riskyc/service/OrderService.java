@@ -310,6 +310,7 @@ public class OrderService {
 
     public OrderResponse setPaymentMethod(UUID orderId, PaymentMethod method) {
         Order order = getOrThrow(orderId);
+        requireNotCancelled(order);
         order.setPaymentMethod(method);
         String template = method == PaymentMethod.ORANGE_MONEY ? orangeMoneyCode : mobileMoneyCode;
         String amount = order.getTotal().setScale(0, java.math.RoundingMode.DOWN).toPlainString();
@@ -321,6 +322,7 @@ public class OrderService {
 
     public OrderResponse uploadPaymentProof(UUID orderId, MultipartFile file) {
         Order order = getOrThrow(orderId);
+        requireNotCancelled(order);
         String key = s3MediaService.upload(file, PAYMENT_PROOF_FOLDER + "/" + orderId);
         order.setPaymentScreenshotKey(key);
         order.setStatus(OrderStatus.REVIEWING);
@@ -413,6 +415,38 @@ public class OrderService {
                 }
             }
             default -> { }
+        }
+    }
+
+    /** Orders still waiting for the customer to pay — they hold stock until paid or expired. */
+    public static final List<OrderStatus> UNPAID_STATUSES = List.of(OrderStatus.PENDING, OrderStatus.AWAITING_PAYMENT);
+
+    /**
+     * Cancels one order that was never paid and gives its stock back. Both apps create, choose the payment method and
+     * upload the proof in one step, so an order left here is a checkout that failed or was abandoned part-way — without
+     * this its items stayed reserved forever. Re-checked under the row lock: a proof that arrived meanwhile wins.
+     * Payment itself is untouched; an order with a proof (REVIEWING) is never expired.
+     *
+     * @return true if the order was expired
+     */
+    public boolean expireIfUnpaid(UUID orderId) {
+        Order order = orderRepository.findByIdForUpdate(orderId).orElse(null);
+        if (order == null || !UNPAID_STATUSES.contains(order.getStatus()) || order.getPaymentScreenshotKey() != null) {
+            return false;
+        }
+        order.setStatus(OrderStatus.CANCELLED);
+        order.setRejectionReason("Payment wasn't completed in time, so the order expired and its items went back on sale.");
+        order.setStatusChangedByName("Automatic expiry");
+        order.setStatusChangedAt(Instant.now());
+        restoreStock(order);
+        broadcastOrder(order, toResponse(order));
+        return true;
+    }
+
+    /** A cancelled order (expired or rejected) has already given its stock back, so it can't be paid any more. */
+    private void requireNotCancelled(Order order) {
+        if (order.getStatus() == OrderStatus.CANCELLED) {
+            throw new ConflictException("This order was cancelled, so it can't be paid any more — please place the order again.");
         }
     }
 

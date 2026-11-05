@@ -7,6 +7,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 
 import java.util.Collection;
 import java.util.List;
@@ -23,6 +24,10 @@ public interface OrderRepository extends JpaRepository<Order, UUID> {
     /** The sibling Orders produced by one checkout — see Order#checkoutGroupId. */
     List<Order> findByCheckoutGroupIdOrderByCreatedAtDesc(UUID checkoutGroupId);
     List<Order> findByEnterpriseIsNull();
+
+    /** Unpaid orders still holding stock — see UnpaidOrderExpiryJob. */
+    @Query("select o.id from Order o where o.status in :statuses and o.paymentScreenshotKey is null and o.createdAt < :before")
+    List<UUID> findUnpaidIdsCreatedBefore(@Param("statuses") Collection<OrderStatus> statuses, @Param("before") java.time.Instant before);
 
     /**
      * Row-locks the order for the rest of the transaction — used by

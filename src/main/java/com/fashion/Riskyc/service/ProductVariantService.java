@@ -30,11 +30,16 @@ public class ProductVariantService {
         return variantRepository.findByProductIdOrderByColorNameAscSizeAsc(productId).stream().map(this::toResponse).toList();
     }
 
-    /** Admin correction — sets the quantity directly and clears "untracked" (an admin typing a real number is exactly what turns a migration-backfilled sentinel into a trusted figure). */
+    /**
+     * Admin correction — sets the quantity directly and clears "untracked" (an admin typing a real number is exactly
+     * what turns a migration-backfilled sentinel into a trusted figure), or, when the entry asks for it, makes the
+     * variant unlimited again.
+     */
     public ProductVariantResponse upsertQuantity(Product product, ProductVariantStockEntryRequest entry) {
         ProductVariant variant = findOrCreate(product, entry.colorName(), entry.size());
-        variant.setQuantity(entry.quantity());
-        variant.setUntracked(false);
+        variant.setUntracked(entry.unlimited());
+        // An unlimited variant is never counted, so its stored figure stays a neutral 0 (see the comment below).
+        variant.setQuantity(entry.unlimited() ? 0 : entry.quantity());
         return toResponse(variantRepository.save(variant));
     }
 

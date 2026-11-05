@@ -307,7 +307,7 @@ public class ProductService {
         for (ProductVariantStockEntryRequest entry : request.variants()) {
             productVariantService.upsertQuantity(product, entry);
             String label = (entry.colorName().isEmpty() ? "" : entry.colorName() + " ") + (entry.size().isEmpty() ? "" : entry.size());
-            changed.add((label.isBlank() ? "default" : label.trim()) + " to " + entry.quantity());
+            changed.add((label.isBlank() ? "default" : label.trim()) + " to " + (entry.unlimited() ? "unlimited" : entry.quantity()));
         }
         if (!changed.isEmpty()) {
             logAudit(product, ProductAuditSection.STOCK, "Set stock: " + String.join(", ", changed));

@@ -1,7 +1,9 @@
 package com.fashion.Riskyc.config;
 
 import org.springframework.beans.factory.annotation.Value;
+import com.fashion.Riskyc.websocket.StompSubscriptionGuard;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.messaging.simp.config.ChannelRegistration;
 import org.springframework.messaging.simp.config.MessageBrokerRegistry;
 import org.springframework.web.socket.config.annotation.EnableWebSocketMessageBroker;
 import org.springframework.web.socket.config.annotation.StompEndpointRegistry;
@@ -26,6 +28,18 @@ public class WebSocketConfig implements WebSocketMessageBrokerConfigurer {
 
     @Value("${app.cors.allowed-origins}")
     private String[] allowedOrigins;
+
+    private final StompSubscriptionGuard subscriptionGuard;
+
+    public WebSocketConfig(StompSubscriptionGuard subscriptionGuard) {
+        this.subscriptionGuard = subscriptionGuard;
+    }
+
+    /** Admin channels need the admin's token on CONNECT; see {@link StompSubscriptionGuard}. */
+    @Override
+    public void configureClientInboundChannel(ChannelRegistration registration) {
+        registration.interceptors(subscriptionGuard);
+    }
 
     @Override
     public void registerStompEndpoints(StompEndpointRegistry registry) {

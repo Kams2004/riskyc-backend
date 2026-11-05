@@ -41,6 +41,8 @@ public class OrderService {
     private static final String PAYMENT_PROOF_FOLDER = "payment-proofs";
     /** Every connected admin session subscribes here to keep order/packaging state in sync live. */
     private static final String ORDERS_TOPIC = "/topic/orders";
+    /** A seller's admins listen on their own shop's channel only — see websocket/StompSubscriptionGuard. */
+    private static final String ORDERS_ENTERPRISE_TOPIC = ORDERS_TOPIC + "/enterprise/";
 
     private final OrderRepository orderRepository;
     private final ProductRepository productRepository;
@@ -387,7 +389,7 @@ public class OrderService {
                             "Nous n'avons pas pu valider votre paiement — appuyez pour plus de détails."),
                     trackingUrl);
         }
-        messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
+        broadcastOrder(order, response);
         return response;
     }
 
@@ -447,7 +449,7 @@ public class OrderService {
         order.setPackagingStartedById(CurrentAdmin.idOrNull());
         order.setPackagingStartedAt(Instant.now());
         OrderResponse response = toResponse(order);
-        messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
+        broadcastOrder(order, response);
         pushNotificationService.notifyOrder(orderId,
                 new LocalizedText("Your order is being packaged", "Votre commande est en cours d'emballage"),
                 new LocalizedText("We've started packaging your order — tap to track it.",
@@ -468,7 +470,7 @@ public class OrderService {
         order.setPackagingCompletedById(CurrentAdmin.idOrNull());
         order.setPackagingCompletedAt(Instant.now());
         OrderResponse response = toResponse(order);
-        messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
+        broadcastOrder(order, response);
         // Deliberately worded differently from ConversationService's
         // sendPackagingConfirmation push below — an admin normally finishes
         // packaging and then sends the delivery-details/photo message
@@ -598,5 +600,13 @@ public class OrderService {
                 item.getSelectedImageIndex(),
                 item.getUnitPrice()
         );
+    }
+
+    /** Platform staff get every order on /topic/orders; the order's own shop also gets it on its channel. */
+    private void broadcastOrder(Order order, OrderResponse response) {
+        messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
+        if (order.getEnterprise() != null) {
+            messagingTemplate.convertAndSend(ORDERS_ENTERPRISE_TOPIC + order.getEnterprise().getId(), response);
+        }
     }
 }

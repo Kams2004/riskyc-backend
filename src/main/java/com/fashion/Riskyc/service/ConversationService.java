@@ -67,6 +67,11 @@ public class ConversationService {
      * so a conversation with no order — e.g. a plain product question asked
      * before ever ordering — has nowhere to route a push to yet.
      */
+    /** A conversation opened from the chat bubble has no order — its notifications fall back to English instead of failing the reply. */
+    private static String languageOf(Conversation conversation) {
+        return conversation.getOrder() != null ? conversation.getOrder().getLanguage() : null;
+    }
+
     private void pushNewMessageForOrder(Conversation conversation) {
         if (conversation.getOrder() == null) return;
         UUID orderId = conversation.getOrder().getId();
@@ -236,6 +241,7 @@ public class ConversationService {
 
     public ChatMessageResponse sendMessage(SendMessageRequest request) {
         Conversation conversation = getOrThrow(request.conversationId());
+        requireStaffForShopReply(request.sender(), conversation);
 
         ChatMessage message = ChatMessage.builder()
                 .conversation(conversation)
@@ -262,7 +268,7 @@ public class ConversationService {
         } else {
             if (conversation.getCustomer() != null) {
                 notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
-                        NEW_MESSAGE_TEXT.forLanguage(conversation.getOrder().getLanguage()), conversation.getId().toString());
+                        NEW_MESSAGE_TEXT.forLanguage(languageOf(conversation)), conversation.getId().toString());
             }
             pushNewMessageForOrder(conversation);
         }
@@ -272,6 +278,7 @@ public class ConversationService {
 
     public ChatMessageResponse sendImageMessage(UUID conversationId, MessageSender sender, String text, MultipartFile file) {
         Conversation conversation = getOrThrow(conversationId);
+        requireStaffForShopReply(sender, conversation);
         String key = s3MediaService.upload(file, CHAT_IMAGE_FOLDER + "/" + conversationId);
 
         ChatMessage message = ChatMessage.builder()
@@ -297,7 +304,7 @@ public class ConversationService {
         } else {
             if (conversation.getCustomer() != null) {
                 notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
-                        NEW_MESSAGE_TEXT.forLanguage(conversation.getOrder().getLanguage()), conversation.getId().toString());
+                        NEW_MESSAGE_TEXT.forLanguage(languageOf(conversation)), conversation.getId().toString());
             }
             pushNewMessageForOrder(conversation);
         }
@@ -307,6 +314,7 @@ public class ConversationService {
 
     public ChatMessageResponse sendVoiceMessage(UUID conversationId, MessageSender sender, Integer durationSeconds, MultipartFile file) {
         Conversation conversation = getOrThrow(conversationId);
+        requireStaffForShopReply(sender, conversation);
         String key = s3MediaService.upload(file, CHAT_VOICE_FOLDER + "/" + conversationId);
 
         ChatMessage message = ChatMessage.builder()
@@ -333,7 +341,7 @@ public class ConversationService {
         } else {
             if (conversation.getCustomer() != null) {
                 notificationService.notifyCustomer(conversation.getCustomer().getId(), NotificationType.NEW_MESSAGE,
-                        NEW_MESSAGE_TEXT.forLanguage(conversation.getOrder().getLanguage()), conversation.getId().toString());
+                        NEW_MESSAGE_TEXT.forLanguage(languageOf(conversation)), conversation.getId().toString());
             }
             pushNewMessageForOrder(conversation);
         }
@@ -369,6 +377,24 @@ public class ConversationService {
             if (m.getVoiceStorageKey() != null) s3MediaService.delete(m.getVoiceStorageKey());
         });
         conversationRepository.delete(conversation);
+    }
+
+    /**
+     * The send endpoints are open so guests and customers can write without an account — but a message marked as
+     * coming from the shop must come from a logged-in admin who can use the chat. Otherwise anyone who knows a
+     * conversation id could post "pay to this number instead" under the shop's name.
+     */
+    private void requireStaffForShopReply(MessageSender sender, Conversation conversation) {
+        if (sender != MessageSender.ADMIN) return;
+        boolean staff = CurrentAdmin.get()
+                .filter(a -> a.hasPermission(Permission.VIEW_CHAT) || a.hasPermission(Permission.MANAGE_CHAT))
+                .isPresent();
+        if (!staff) {
+            throw new ForbiddenException("Only shop staff can reply as the shop.");
+        }
+        if (conversation.getOrder() != null) {
+            requireOrderOwnedOrPlatform(conversation.getOrder());
+        }
     }
 
     /** A seller's admin may only message about their own shop's orders — same rule as OrderService. */

@@ -24,6 +24,8 @@ public record EnterpriseResponse(
         List<CategorySummaryResponse> suggestedCategories,
         String approvedByName,
         Instant approvedAt,
-        Instant createdAt
+        Instant createdAt,
+        /** The platform's own store (Riskyc Fashion): never suspended, not limited to any category. */
+        boolean platformDefault
 ) {
 }

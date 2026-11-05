@@ -272,7 +272,8 @@ public class EnterpriseService {
                 enterprise.getStatus(), enterprise.getContactFirstName(), enterprise.getContactLastName(),
                 enterprise.getContactEmail(), enterprise.getContactPhone(), enterprise.getWhatsappNumber(), enterprise.getWhatDoYouSell(),
                 enterprise.getEstimatedCatalogSize(), categories, suggested,
-                enterprise.getApprovedByName(), enterprise.getApprovedAt(), enterprise.getCreatedAt()
+                enterprise.getApprovedByName(), enterprise.getApprovedAt(), enterprise.getCreatedAt(),
+                enterprise.isPlatformDefault()
         );
     }
 }

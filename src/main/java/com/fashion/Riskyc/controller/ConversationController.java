@@ -1,5 +1,6 @@
 package com.fashion.Riskyc.controller;
 
+import com.fashion.Riskyc.security.CustomerAccess;
 import com.fashion.Riskyc.dto.request.CreateConversationRequest;
 import com.fashion.Riskyc.dto.request.SendMessageRequest;
 import com.fashion.Riskyc.dto.response.ChatMessageResponse;
@@ -26,6 +27,7 @@ import java.util.UUID;
 public class ConversationController {
 
     private final ConversationService conversationService;
+    private final CustomerAccess customerAccess;
 
     @GetMapping
     public List<ConversationResponse> list() {
@@ -40,6 +42,7 @@ public class ConversationController {
     /** Lets a logged-in customer's chat widget find its existing thread, even if an admin started it first. */
     @GetMapping("/customer/{customerId}")
     public ResponseEntity<ConversationResponse> getByCustomerId(@PathVariable UUID customerId) {
+        customerAccess.requireSelf(customerId);
         ConversationResponse response = conversationService.getByCustomerId(customerId);
         return response != null ? ResponseEntity.ok(response) : ResponseEntity.noContent().build();
     }
@@ -70,6 +73,7 @@ public class ConversationController {
 
     @PostMapping
     public ResponseEntity<ConversationResponse> create(@Valid @RequestBody CreateConversationRequest request) {
+        customerAccess.requireSelf(request.customerId());
         return ResponseEntity.status(201).body(conversationService.create(request));
     }
 

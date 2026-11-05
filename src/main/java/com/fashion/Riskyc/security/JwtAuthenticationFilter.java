@@ -34,6 +34,8 @@ import java.util.List;
 public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     public static final String PERMISSION_AUTHORITY_PREFIX = "PERM_";
+    /** Every admin token carries this — the rules for "any admin" (and not a customer or a till) require it. */
+    public static final String ADMIN_AUTHORITY = "ROLE_ADMIN";
 
     private final JwtService jwtService;
 
@@ -52,16 +54,29 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 List<GrantedAuthority> authorities = principal.permissions().stream()
                         .map(Permission::name)
                         .map(name -> (GrantedAuthority) new SimpleGrantedAuthority(PERMISSION_AUTHORITY_PREFIX + name))
-                        .toList();
+                        .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+                authorities.add(new SimpleGrantedAuthority(ADMIN_AUTHORITY));
 
                 var authentication = new UsernamePasswordAuthenticationToken(principal, null, authorities);
                 SecurityContextHolder.getContext().setAuthentication(authentication);
             } catch (JwtException | IllegalArgumentException e) {
-                log.debug("Rejected invalid admin JWT: {}", e.getMessage());
-                SecurityContextHolder.clearContext();
+                authenticateCustomer(token);
             }
         }
 
         filterChain.doFilter(request, response);
+    }
+
+    /** Not an admin token — maybe a customer's, which only proves who they are (see CustomerAccess). */
+    private void authenticateCustomer(String token) {
+        try {
+            CustomerPrincipal principal = new CustomerPrincipal(jwtService.parseCustomer(token));
+            var authentication = new UsernamePasswordAuthenticationToken(principal, null,
+                    List.of(new SimpleGrantedAuthority(CustomerPrincipal.AUTHORITY)));
+            SecurityContextHolder.getContext().setAuthentication(authentication);
+        } catch (JwtException | IllegalArgumentException e) {
+            log.debug("Rejected invalid JWT: {}", e.getMessage());
+            SecurityContextHolder.clearContext();
+        }
     }
 }

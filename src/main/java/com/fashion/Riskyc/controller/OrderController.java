@@ -1,5 +1,6 @@
 package com.fashion.Riskyc.controller;
 
+import com.fashion.Riskyc.security.CustomerAccess;
 import com.fashion.Riskyc.dto.request.AttachCustomerRequest;
 import com.fashion.Riskyc.dto.request.CheckAvailabilityRequest;
 import com.fashion.Riskyc.dto.request.CreateOrderRequest;
@@ -22,6 +23,7 @@ import java.util.UUID;
 public class OrderController {
 
     private final OrderService orderService;
+    private final CustomerAccess customerAccess;
 
     @GetMapping
     public List<OrderResponse> list() {
@@ -36,6 +38,7 @@ public class OrderController {
 
     @GetMapping("/customer/{customerId}")
     public List<OrderResponse> listForCustomer(@PathVariable UUID customerId) {
+        customerAccess.requireSelf(customerId);
         return orderService.listForCustomer(customerId);
     }
 
@@ -53,6 +56,8 @@ public class OrderController {
     /** A cart spanning several sellers now returns one Order per seller — see OrderService#create. */
     @PostMapping
     public ResponseEntity<List<OrderResponse>> create(@Valid @RequestBody CreateOrderRequest request) {
+        // A guest order has no customerId; one placed under an account must come from that account.
+        customerAccess.requireSelf(request.customerId());
         return ResponseEntity.status(201).body(orderService.create(request));
     }
 
@@ -91,6 +96,7 @@ public class OrderController {
     /** Public — see OrderService#attachCustomer for the trust model (same "knowing the order id" pattern the rest of guest order access already uses). */
     @PostMapping("/{id}/attach-customer")
     public OrderResponse attachCustomer(@PathVariable UUID id, @Valid @RequestBody AttachCustomerRequest request) {
+        customerAccess.requireSelf(request.customerId());
         return orderService.attachCustomer(id, request.customerId());
     }
 }

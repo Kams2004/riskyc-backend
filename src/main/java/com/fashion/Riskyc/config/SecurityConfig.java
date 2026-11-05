@@ -249,8 +249,8 @@ public class SecurityConfig {
                         // on MANAGE_USERS, since a freshly-invited seller must be able to
                         // clear their own forced-change flag before they have any other
                         // permission at all. Declared before the generic POST rule below.
-                        .requestMatchers(HttpMethod.POST, "/api/admin-users/me/change-password").authenticated()
-                        .requestMatchers(HttpMethod.POST, "/api/admin-users/me/session").authenticated()
+                        .requestMatchers(HttpMethod.POST, "/api/admin-users/me/change-password").hasAuthority(JwtAuthenticationFilter.ADMIN_AUTHORITY)
+                        .requestMatchers(HttpMethod.POST, "/api/admin-users/me/session").hasAuthority(JwtAuthenticationFilter.ADMIN_AUTHORITY)
                         .requestMatchers(HttpMethod.GET, "/api/admin-users/**", "/api/roles/**").hasAuthority(P_VIEW_USERS)
                         .requestMatchers(HttpMethod.POST, "/api/admin-users/**", "/api/roles/**").hasAuthority(P_MANAGE_USERS)
                         .requestMatchers(HttpMethod.PUT, "/api/admin-users/**", "/api/roles/**").hasAuthority(P_MANAGE_USERS)
@@ -262,9 +262,10 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/conversations/**").hasAuthority(P_MANAGE_CHAT)
 
                         // ── Notifications: any authenticated admin ──
-                        .requestMatchers("/api/notifications/admin/**").authenticated()
+                        .requestMatchers("/api/notifications/admin/**").hasAuthority(JwtAuthenticationFilter.ADMIN_AUTHORITY)
 
-                        .anyRequest().authenticated()
+                        // Staff and tills only — a customer token proves who the customer is, nothing more (see CustomerAccess).
+                        .anyRequest().hasAnyAuthority(JwtAuthenticationFilter.ADMIN_AUTHORITY, DeviceAuthenticationFilter.AUTHORITY)
                 )
                 .addFilterBefore(new JwtAuthenticationFilter(jwtService), UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(new DeviceAuthenticationFilter(posDeviceService), UsernamePasswordAuthenticationFilter.class);

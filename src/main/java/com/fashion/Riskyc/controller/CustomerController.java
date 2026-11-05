@@ -1,5 +1,6 @@
 package com.fashion.Riskyc.controller;
 
+import com.fashion.Riskyc.security.CustomerAccess;
 import com.fashion.Riskyc.dto.request.GoogleAuthRequest;
 import com.fashion.Riskyc.dto.request.LoginRequest;
 import com.fashion.Riskyc.dto.request.RegisterCustomerRequest;
@@ -22,6 +23,7 @@ import java.util.UUID;
 public class CustomerController {
 
     private final CustomerService customerService;
+    private final CustomerAccess customerAccess;
 
     @PostMapping("/register")
     public ResponseEntity<CustomerResponse> register(@Valid @RequestBody RegisterCustomerRequest request) {
@@ -40,11 +42,13 @@ public class CustomerController {
 
     @GetMapping("/{id}/referrals")
     public ReferralSummaryResponse referrals(@PathVariable UUID id) {
+        customerAccess.requireSelf(id);
         return customerService.getReferralSummary(id);
     }
 
     @PatchMapping("/{id}/acronym")
     public CustomerResponse updateAcronym(@PathVariable UUID id, @RequestBody Map<String, String> body) {
+        customerAccess.requireSelf(id);
         return customerService.updateAcronym(id, body.get("acronym"));
     }
 

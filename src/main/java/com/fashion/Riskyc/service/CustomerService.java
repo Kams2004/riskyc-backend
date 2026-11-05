@@ -13,6 +13,7 @@ import com.fashion.Riskyc.repository.ConversationRepository;
 import com.fashion.Riskyc.repository.CustomerRepository;
 import com.fashion.Riskyc.repository.NotificationRepository;
 import com.fashion.Riskyc.repository.OrderRepository;
+import com.fashion.Riskyc.security.JwtService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -42,6 +43,7 @@ public class CustomerService {
     private final ConversationRepository conversationRepository;
     private final NotificationRepository notificationRepository;
     private final PasswordEncoder passwordEncoder;
+    private final JwtService jwtService;
     private final SecureRandom random = new SecureRandom();
     private final RestClient restClient = RestClient.create();
 
@@ -70,7 +72,7 @@ public class CustomerService {
                 .acronym(generateDefaultAcronym())
                 .referredBy(resolveReferrer(request.referralCode()))
                 .build());
-        return toResponse(customer);
+        return signedIn(customer);
     }
 
     public CustomerResponse login(LoginRequest request) {
@@ -83,7 +85,7 @@ public class CustomerService {
             throw new BadRequestException("This account has been blocked. Please contact support.");
         }
         customer.setLastLogin(Instant.now());
-        return toResponse(customer);
+        return signedIn(customer);
     }
 
     /**
@@ -129,7 +131,7 @@ public class CustomerService {
             customer.setLastLogin(Instant.now());
         }
         Customer saved = customerRepository.saveAndFlush(customer);
-        return toResponse(saved);
+        return signedIn(saved);
     }
 
     @SuppressWarnings("unchecked")
@@ -262,11 +264,16 @@ public class CustomerService {
         return customerRepository.findById(id).orElseThrow(() -> ResourceNotFoundException.of("Customer", id));
     }
 
+    /** The customer as returned by a sign-in, with the token the apps send back on their own-account requests. */
+    private CustomerResponse signedIn(Customer c) {
+        return toResponse(c).withToken(jwtService.generateCustomerToken(c.getId()));
+    }
+
     private CustomerResponse toResponse(Customer c) {
         ensureReferralFields(c);
         return new CustomerResponse(c.getId(), c.getFirstName(), c.getLastName(), c.getEmail(),
                 c.getPhone(), c.getStatus(), c.getCreatedAt(), c.getLastLogin(),
                 c.getReferralCode(), c.getAcronym(),
-                c.getReferredBy() != null ? c.getReferredBy().getAcronym() : null);
+                c.getReferredBy() != null ? c.getReferredBy().getAcronym() : null, null);
     }
 }

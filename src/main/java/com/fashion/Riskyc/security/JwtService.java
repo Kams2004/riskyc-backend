@@ -17,6 +17,7 @@ import java.time.temporal.ChronoUnit;
 import java.util.Base64;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -34,6 +35,11 @@ public class JwtService {
     private static final String CLAIM_ROLE_NAME = "roleName";
     private static final String CLAIM_PERMISSIONS = "permissions";
     private static final String CLAIM_ENTERPRISE_ID = "enterpriseId";
+    /** Absent on admin tokens (including every one issued before customer tokens existed); "customer" otherwise. */
+    private static final String CLAIM_TYPE = "typ";
+    private static final String TYPE_CUSTOMER = "customer";
+    /** Customers stay signed in on their phone/browser; the token only unlocks their own orders and chat. */
+    private static final long CUSTOMER_TOKEN_DAYS = 90;
 
     private final JwtProperties jwtProperties;
 
@@ -66,11 +72,10 @@ public class JwtService {
 
     /** Parses and validates the token, returning the authenticated admin principal. Throws {@link JwtException} if invalid/expired. */
     public AdminPrincipal parse(String token) {
-        Claims claims = Jwts.parser()
-                .verifyWith(signingKey())
-                .build()
-                .parseSignedClaims(token)
-                .getPayload();
+        Claims claims = claims(token);
+        if (TYPE_CUSTOMER.equals(claims.get(CLAIM_TYPE, String.class))) {
+            throw new JwtException("A customer token is not an admin token");
+        }
 
         @SuppressWarnings("unchecked")
         List<String> permissionNames = claims.get(CLAIM_PERMISSIONS, List.class);
@@ -87,5 +92,33 @@ public class JwtService {
                 permissions,
                 claims.get(CLAIM_ENTERPRISE_ID, String.class)
         );
+    }
+
+    public String generateCustomerToken(UUID customerId) {
+        Instant now = Instant.now();
+        return Jwts.builder()
+                .subject(customerId.toString())
+                .claim(CLAIM_TYPE, TYPE_CUSTOMER)
+                .issuedAt(java.util.Date.from(now))
+                .expiration(java.util.Date.from(now.plus(CUSTOMER_TOKEN_DAYS, ChronoUnit.DAYS)))
+                .signWith(signingKey())
+                .compact();
+    }
+
+    /** The customer id in a valid customer token. Throws {@link JwtException} for an admin token or an invalid/expired one. */
+    public UUID parseCustomer(String token) {
+        Claims claims = claims(token);
+        if (!TYPE_CUSTOMER.equals(claims.get(CLAIM_TYPE, String.class))) {
+            throw new JwtException("Not a customer token");
+        }
+        return UUID.fromString(claims.getSubject());
+    }
+
+    private Claims claims(String token) {
+        return Jwts.parser()
+                .verifyWith(signingKey())
+                .build()
+                .parseSignedClaims(token)
+                .getPayload();
     }
 }

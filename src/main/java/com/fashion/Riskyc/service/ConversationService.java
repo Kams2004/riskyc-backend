@@ -58,6 +58,11 @@ public class ConversationService {
     @Value("${app.site.url}")
     private String siteUrl;
 
+    /** A conversation opened from the chat bubble has no order — its notifications fall back to English instead of failing the reply. */
+    private static String languageOf(Conversation conversation) {
+        return conversation.getOrder() != null ? conversation.getOrder().getLanguage() : null;
+    }
+
     /**
      * OS-level push (not just the in-app WebSocket toast notifyCustomer sends,
      * which the mobile app doesn't even listen for — see ChatBlob's own doc
@@ -67,11 +72,6 @@ public class ConversationService {
      * so a conversation with no order — e.g. a plain product question asked
      * before ever ordering — has nowhere to route a push to yet.
      */
-    /** A conversation opened from the chat bubble has no order — its notifications fall back to English instead of failing the reply. */
-    private static String languageOf(Conversation conversation) {
-        return conversation.getOrder() != null ? conversation.getOrder().getLanguage() : null;
-    }
-
     private void pushNewMessageForOrder(Conversation conversation) {
         if (conversation.getOrder() == null) return;
         UUID orderId = conversation.getOrder().getId();
@@ -394,6 +394,9 @@ public class ConversationService {
         }
         if (conversation.getOrder() != null) {
             requireOrderOwnedOrPlatform(conversation.getOrder());
+        } else if (CurrentAdmin.enterpriseIdOrNull() != null) {
+            // A thread opened from the chat bubble isn't tied to any seller's order — it's the platform's to answer.
+            throw new ForbiddenException("Only Riskyc staff can answer this conversation.");
         }
     }
 

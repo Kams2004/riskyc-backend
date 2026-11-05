@@ -36,7 +36,8 @@ import java.util.regex.Pattern;
 @RequiredArgsConstructor
 public class StompSubscriptionGuard implements ChannelInterceptor {
 
-    private static final String ADMIN_ATTRIBUTE = "riskyc.admin";
+    /** The raw admin token from CONNECT — re-verified on every SUBSCRIBE so an expired token stops opening admin channels. */
+    private static final String TOKEN_ATTRIBUTE = "riskyc.adminToken";
     private static final String UUID_PATTERN = "[0-9a-fA-F-]{36}";
     private static final Pattern CONVERSATION = Pattern.compile("^/topic/conversations/" + UUID_PATTERN + "(/read)?$");
     private static final Pattern ADMIN_NOTIFICATIONS_FOR_SHOP = Pattern.compile("^/topic/notifications/admin/enterprise/(" + UUID_PATTERN + ")$");
@@ -51,16 +52,25 @@ public class StompSubscriptionGuard implements ChannelInterceptor {
         Map<String, Object> session = accessor.getSessionAttributes();
 
         if (accessor.getCommand() == StompCommand.CONNECT) {
-            AdminPrincipal admin = adminFrom(accessor.getFirstNativeHeader("Authorization"));
+            String header = accessor.getFirstNativeHeader("Authorization");
             if (session != null) {
-                if (admin != null) session.put(ADMIN_ATTRIBUTE, admin);
-                else session.remove(ADMIN_ATTRIBUTE);
+                if (header != null && header.startsWith("Bearer ")) session.put(TOKEN_ATTRIBUTE, header.substring(7));
+                else session.remove(TOKEN_ATTRIBUTE);
             }
             return message;
         }
 
+        if (accessor.getCommand() == StompCommand.SEND) {
+            // Messages from clients go to the app (/app/chat.send), never straight to a broker channel — otherwise anyone
+            // could push a fake "shop" chat message or order update to every listener.
+            String destination = accessor.getDestination();
+            if (destination != null && destination.startsWith("/app/")) return message;
+            log.debug("Dropped STOMP SEND to {}", destination);
+            return null;
+        }
+
         if (accessor.getCommand() == StompCommand.SUBSCRIBE) {
-            AdminPrincipal admin = session != null ? (AdminPrincipal) session.get(ADMIN_ATTRIBUTE) : null;
+            AdminPrincipal admin = session != null ? adminFrom((String) session.get(TOKEN_ATTRIBUTE)) : null;
             String destination = accessor.getDestination();
             if (destination != null && mayListen(destination, admin)) return message;
             log.debug("Dropped STOMP subscription to {} (admin: {})", destination, admin != null ? admin.email() : "none");
@@ -93,10 +103,10 @@ public class StompSubscriptionGuard implements ChannelInterceptor {
         return admin.hasPermission(Permission.VIEW_ORDERS) || admin.hasPermission(Permission.VIEW_TREATMENT);
     }
 
-    private AdminPrincipal adminFrom(String header) {
-        if (header == null || !header.startsWith("Bearer ")) return null;
+    private AdminPrincipal adminFrom(String token) {
+        if (token == null) return null;
         try {
-            return jwtService.parse(header.substring(7));
+            return jwtService.parse(token);
         } catch (JwtException | IllegalArgumentException e) {
             return null;
         }

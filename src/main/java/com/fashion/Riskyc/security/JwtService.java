@@ -76,6 +76,18 @@ public class JwtService {
         if (TYPE_CUSTOMER.equals(claims.get(CLAIM_TYPE, String.class))) {
             throw new JwtException("A customer token is not an admin token");
         }
+        return toAdmin(claims);
+    }
+
+    /** Verifies the token once and returns whichever principal it carries: an {@link AdminPrincipal} or a {@link CustomerPrincipal}. */
+    public Object parseAny(String token) {
+        Claims claims = claims(token);
+        return TYPE_CUSTOMER.equals(claims.get(CLAIM_TYPE, String.class))
+                ? new CustomerPrincipal(UUID.fromString(claims.getSubject()))
+                : toAdmin(claims);
+    }
+
+    private AdminPrincipal toAdmin(Claims claims) {
 
         @SuppressWarnings("unchecked")
         List<String> permissionNames = claims.get(CLAIM_PERMISSIONS, List.class);

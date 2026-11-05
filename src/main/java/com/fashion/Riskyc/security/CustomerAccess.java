@@ -1,7 +1,6 @@
 package com.fashion.Riskyc.security;
 
 import com.fashion.Riskyc.entity.CustomerStatus;
-import com.fashion.Riskyc.entity.Permission;
 import com.fashion.Riskyc.exception.ForbiddenException;
 import com.fashion.Riskyc.exception.UnauthorizedException;
 import com.fashion.Riskyc.repository.CustomerRepository;
@@ -18,7 +17,8 @@ import java.util.UUID;
  * to trust whatever customer id was in the URL or body; now:
  * <ul>
  *   <li>a customer token must belong to that same customer (and the account must not be blocked);</li>
- *   <li>staff who can see orders or customers may look too;</li>
+ *   <li>staff tokens are refused — the admin screens never act as a customer, and a seller's admin must not reach
+ *       another shop's customer;</li>
  *   <li>a request with no token is refused once {@code app.security.customer-token-required} is on. It starts off so
  *       mobile app versions released before customer tokens keep working; switch it on once customers have updated.</li>
  * </ul>
@@ -49,9 +49,8 @@ public class CustomerAccess {
             }
             return;
         }
-        if (principal instanceof AdminPrincipal admin
-                && (admin.hasPermission(Permission.VIEW_ORDERS) || admin.hasPermission(Permission.VIEW_CUSTOMERS))) {
-            return;
+        if (principal instanceof AdminPrincipal || principal instanceof DevicePrincipal) {
+            throw new ForbiddenException("This is a customer's own account.");
         }
         if (tokenRequired) {
             throw new UnauthorizedException("Please sign in again.");

@@ -91,11 +91,10 @@ class CustomerTokenTest {
     }
 
     @Test
-    void staffWhoCanSeeOrdersMayLook() {
-        CustomerAccess access = access(true, CustomerStatus.ACTIVE);
-        signIn(new AdminPrincipal("u", "a@x.com", "A", "r", "Role", Set.of(Permission.VIEW_ORDERS), null));
-        assertDoesNotThrow(() -> access.requireSelf(alice));
-        signIn(new AdminPrincipal("u", "a@x.com", "A", "r", "Role", Set.of(Permission.VIEW_CHAT), null));
-        assertThrows(UnauthorizedException.class, () -> access.requireSelf(alice));
+    void staffTokensNeverActAsACustomer() {
+        CustomerAccess access = access(false, CustomerStatus.ACTIVE);
+        signIn(new AdminPrincipal("u", "a@x.com", "A", "r", "Role", Set.of(Permission.VIEW_ORDERS, Permission.VIEW_CUSTOMERS), null));
+        // 403, not 401: a 401 would sign the admin out of the admin panel.
+        assertThrows(ForbiddenException.class, () -> access.requireSelf(alice));
     }
 }

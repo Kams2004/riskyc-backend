@@ -21,6 +21,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
@@ -309,7 +311,8 @@ public class OrderService {
     }
 
     public OrderResponse setPaymentMethod(UUID orderId, PaymentMethod method) {
-        Order order = getOrThrow(orderId);
+        // Locked like expireIfUnpaid, so an expiry and a payment step can't both win.
+        Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow(() -> ResourceNotFoundException.of("Order", orderId));
         requireNotCancelled(order);
         order.setPaymentMethod(method);
         String template = method == PaymentMethod.ORANGE_MONEY ? orangeMoneyCode : mobileMoneyCode;
@@ -321,7 +324,8 @@ public class OrderService {
     }
 
     public OrderResponse uploadPaymentProof(UUID orderId, MultipartFile file) {
-        Order order = getOrThrow(orderId);
+        // Locked like expireIfUnpaid, so an expiry and a payment step can't both win.
+        Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow(() -> ResourceNotFoundException.of("Order", orderId));
         requireNotCancelled(order);
         String key = s3MediaService.upload(file, PAYMENT_PROOF_FOLDER + "/" + orderId);
         order.setPaymentScreenshotKey(key);
@@ -636,11 +640,27 @@ public class OrderService {
         );
     }
 
-    /** Platform staff get every order on /topic/orders; the order's own shop also gets it on its channel. */
+    /**
+     * Platform staff get every order on /topic/orders; the order's own shop also gets it on its channel. Sent after the
+     * transaction commits, so dashboards never show a change that was rolled back.
+     */
     private void broadcastOrder(Order order, OrderResponse response) {
-        messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
-        if (order.getEnterprise() != null) {
-            messagingTemplate.convertAndSend(ORDERS_ENTERPRISE_TOPIC + order.getEnterprise().getId(), response);
+        UUID enterpriseId = order.getEnterprise() != null ? order.getEnterprise().getId() : null;
+        Runnable send = () -> {
+            messagingTemplate.convertAndSend(ORDERS_TOPIC, response);
+            if (enterpriseId != null) {
+                messagingTemplate.convertAndSend(ORDERS_ENTERPRISE_TOPIC + enterpriseId, response);
+            }
+        };
+        if (TransactionSynchronizationManager.isSynchronizationActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    send.run();
+                }
+            });
+        } else {
+            send.run();
         }
     }
 }

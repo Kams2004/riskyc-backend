@@ -2,11 +2,21 @@ package com.fashion.Riskyc.websocket;
 
 import com.fashion.Riskyc.entity.Permission;
 import com.fashion.Riskyc.security.AdminPrincipal;
+import com.fashion.Riskyc.config.JwtProperties;
+import com.fashion.Riskyc.security.JwtService;
 import org.junit.jupiter.api.Test;
+import org.springframework.messaging.Message;
+import org.springframework.messaging.simp.stomp.StompCommand;
+import org.springframework.messaging.simp.stomp.StompHeaderAccessor;
+import org.springframework.messaging.support.MessageBuilder;
+
+import java.util.HashMap;
 
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class StompSubscriptionGuardTest {
@@ -55,5 +65,22 @@ class StompSubscriptionGuardTest {
         assertFalse(StompSubscriptionGuard.mayListen("/topic/notifications/admin", seller));
         assertFalse(StompSubscriptionGuard.mayListen("/topic/orders/enterprise/" + OTHER_SHOP, seller));
         assertFalse(StompSubscriptionGuard.mayListen("/topic/notifications/admin/enterprise/" + OTHER_SHOP, seller));
+    }
+
+    private static Message<byte[]> send(String destination) {
+        StompHeaderAccessor accessor = StompHeaderAccessor.create(StompCommand.SEND);
+        accessor.setDestination(destination);
+        accessor.setSessionAttributes(new HashMap<>());
+        accessor.setLeaveMutable(true);
+        return MessageBuilder.createMessage("{\"sender\":\"ADMIN\",\"text\":\"pay here\"}".getBytes(), accessor.getMessageHeaders());
+    }
+
+    @Test
+    void clientsCannotPublishStraightToABrokerChannel() {
+        StompSubscriptionGuard guard = new StompSubscriptionGuard(new JwtService(new JwtProperties()));
+        assertNull(guard.preSend(send("/topic/conversations/" + CONVERSATION), null), "a fake shop message must not reach listeners");
+        assertNull(guard.preSend(send("/topic/orders"), null));
+        assertNull(guard.preSend(send("/queue/anything"), null));
+        assertNotNull(guard.preSend(send("/app/chat.send"), null), "the app endpoint still receives messages");
     }
 }

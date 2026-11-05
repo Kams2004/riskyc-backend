@@ -50,33 +50,25 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         if (header != null && header.startsWith("Bearer ")) {
             String token = header.substring(7);
             try {
-                AdminPrincipal principal = jwtService.parse(token);
-                List<GrantedAuthority> authorities = principal.permissions().stream()
-                        .map(Permission::name)
-                        .map(name -> (GrantedAuthority) new SimpleGrantedAuthority(PERMISSION_AUTHORITY_PREFIX + name))
-                        .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
-                authorities.add(new SimpleGrantedAuthority(ADMIN_AUTHORITY));
-
-                var authentication = new UsernamePasswordAuthenticationToken(principal, null, authorities);
-                SecurityContextHolder.getContext().setAuthentication(authentication);
+                Object parsed = jwtService.parseAny(token);
+                if (parsed instanceof AdminPrincipal principal) {
+                    List<GrantedAuthority> authorities = principal.permissions().stream()
+                            .map(Permission::name)
+                            .map(name -> (GrantedAuthority) new SimpleGrantedAuthority(PERMISSION_AUTHORITY_PREFIX + name))
+                            .collect(java.util.stream.Collectors.toCollection(java.util.ArrayList::new));
+                    authorities.add(new SimpleGrantedAuthority(ADMIN_AUTHORITY));
+                    SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(principal, null, authorities));
+                } else if (parsed instanceof CustomerPrincipal customer) {
+                    // Proves only who the customer is — see CustomerAccess.
+                    SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(customer, null,
+                            List.of(new SimpleGrantedAuthority(CustomerPrincipal.AUTHORITY))));
+                }
             } catch (JwtException | IllegalArgumentException e) {
-                authenticateCustomer(token);
+                log.debug("Rejected invalid JWT: {}", e.getMessage());
+                SecurityContextHolder.clearContext();
             }
         }
 
         filterChain.doFilter(request, response);
-    }
-
-    /** Not an admin token — maybe a customer's, which only proves who they are (see CustomerAccess). */
-    private void authenticateCustomer(String token) {
-        try {
-            CustomerPrincipal principal = new CustomerPrincipal(jwtService.parseCustomer(token));
-            var authentication = new UsernamePasswordAuthenticationToken(principal, null,
-                    List.of(new SimpleGrantedAuthority(CustomerPrincipal.AUTHORITY)));
-            SecurityContextHolder.getContext().setAuthentication(authentication);
-        } catch (JwtException | IllegalArgumentException e) {
-            log.debug("Rejected invalid JWT: {}", e.getMessage());
-            SecurityContextHolder.clearContext();
-        }
     }
 }

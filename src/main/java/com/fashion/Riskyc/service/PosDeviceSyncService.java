@@ -1,5 +1,9 @@
 package com.fashion.Riskyc.service;
 
+import com.fashion.Riskyc.exception.ResourceNotFoundException;
+import com.fashion.Riskyc.exception.ForbiddenException;
+import com.fashion.Riskyc.exception.ConflictException;
+import com.fashion.Riskyc.exception.BadRequestException;
 import com.fashion.Riskyc.dto.request.DeviceSaleRequest;
 import com.fashion.Riskyc.dto.response.DeviceSaleResultResponse;
 import com.fashion.Riskyc.dto.response.PosSaleResponse;
@@ -66,9 +70,14 @@ public class PosDeviceSyncService {
                 SecurityContextHolder.getContext().setAuthentication(new UsernamePasswordAuthenticationToken(cashier.principal(), null, authorities));
                 PosSaleResponse recorded = posSaleService.create(sale.toCreateRequest());
                 results.add(new DeviceSaleResultResponse(sale.clientSaleId(), "RECORDED", recorded.id(), null));
-            } catch (RuntimeException e) {
+            } catch (BadRequestException | ConflictException | ResourceNotFoundException | ForbiddenException | IllegalArgumentException e) {
+                // The sale itself can't be recorded as sent (unknown product, bad data…) — retrying won't change that.
                 log.warn("Till {} sale {} rejected: {}", device.deviceId(), sale.clientSaleId(), e.getMessage());
                 results.add(new DeviceSaleResultResponse(sale.clientSaleId(), "REJECTED", null, e.getMessage()));
+            } catch (RuntimeException e) {
+                // A server-side hiccup (database, lock timeout…) — the till keeps the sale queued and tries again.
+                log.warn("Till {} sale {} not recorded yet, will be retried: {}", device.deviceId(), sale.clientSaleId(), e.toString());
+                results.add(new DeviceSaleResultResponse(sale.clientSaleId(), "ERROR", null, "The server couldn't record this sale right now; it will be retried."));
             } finally {
                 SecurityContextHolder.getContext().setAuthentication(deviceAuth);
             }

@@ -62,6 +62,8 @@ class OrderServiceTest {
     private TwilioSmsService twilioSmsService;
     @Mock
     private ConversationService conversationService;
+    @Mock
+    private PaymentAccountService paymentAccountService;
 
     private OrderService orderService;
 
@@ -73,7 +75,9 @@ class OrderServiceTest {
         orderService = new OrderService(
                 orderRepository, productRepository, customerRepository, productVariantService,
                 s3MediaService, notificationService, messagingTemplate, pushNotificationService,
-                smsService, twilioSmsService, conversationService, new PricingService());
+                smsService, twilioSmsService, conversationService, new PricingService(), paymentAccountService);
+        // Every shop accepts payments unless a test says otherwise.
+        org.mockito.Mockito.lenient().when(paymentAccountService.acceptsPayments(any())).thenReturn(true);
 
         // lenient: the suspended-seller rejection test never reaches saveAndFlush at all.
         org.mockito.Mockito.lenient().when(orderRepository.saveAndFlush(any())).thenAnswer(inv -> {
@@ -184,5 +188,20 @@ class OrderServiceTest {
 
         assertThatThrownBy(() -> orderService.create(request)).isInstanceOf(BadRequestException.class);
         verify(orderRepository, org.mockito.Mockito.never()).saveAndFlush(any());
+    }
+
+    @Test
+    void create_refusesAShopThatHasNotSetUpItsPaymentNumbers() {
+        Enterprise shop = Enterprise.builder().id(UUID.randomUUID()).name("Nouvelle Boutique").build();
+        Product product = productFor(shop, new BigDecimal("5000"));
+        when(productRepository.findById(product.getId())).thenReturn(java.util.Optional.of(product));
+        when(paymentAccountService.acceptsPayments(shop)).thenReturn(false);
+
+        var request = new com.fashion.Riskyc.dto.request.CreateOrderRequest(null,
+                List.of(new com.fashion.Riskyc.dto.request.OrderItemRequest(product.getId(), 1, null, null, null)), null, "fr");
+        var e = org.junit.jupiter.api.Assertions.assertThrows(com.fashion.Riskyc.exception.ConflictException.class,
+                () -> orderService.create(request));
+        org.junit.jupiter.api.Assertions.assertTrue(e.getMessage().contains("Nouvelle Boutique"));
+        org.mockito.Mockito.verify(orderRepository, org.mockito.Mockito.never()).saveAndFlush(any());
     }
 }

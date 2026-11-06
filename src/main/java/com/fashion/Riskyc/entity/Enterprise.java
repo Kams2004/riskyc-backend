@@ -88,6 +88,17 @@ public class Enterprise {
 
     private Instant approvedAt;
 
+    // ── Where this shop's customers pay. Each seller receives and validates its own payments; the platform's own
+    // store (platformDefault) starts with the numbers from application.properties. A code is the USSD string the
+    // customer dials, with "{amount}" where the amount goes. A method is offered only when both its code and name are set.
+    private String orangeMoneyCode;
+
+    private String orangeMoneyName;
+
+    private String mobileMoneyCode;
+
+    private String mobileMoneyName;
+
     @CreationTimestamp
     @Column(updatable = false)
     private Instant createdAt;

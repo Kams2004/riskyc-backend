@@ -66,6 +66,7 @@ public class SecurityConfig {
     private static final String P_MANAGE_USERS = "PERM_MANAGE_USERS";
     private static final String P_VIEW_CHAT = "PERM_VIEW_CHAT";
     private static final String P_MANAGE_CHAT = "PERM_MANAGE_CHAT";
+    private static final String P_MANAGE_PAYMENT_SETTINGS = "PERM_MANAGE_PAYMENT_SETTINGS";
     private static final String P_VIEW_PUBLICITY = "PERM_VIEW_PUBLICITY";
     private static final String P_MANAGE_PUBLICITY = "PERM_MANAGE_PUBLICITY";
     private static final String P_VIEW_POS = "PERM_VIEW_POS";
@@ -195,7 +196,7 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.GET, "/api/media/**").permitAll()
                         .requestMatchers(HttpMethod.HEAD, "/api/media/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/orders").permitAll()
-                        .requestMatchers(HttpMethod.POST, "/api/orders/check-availability").permitAll()
+                        .requestMatchers(HttpMethod.POST, "/api/orders/check-availability", "/api/orders/payment-plan").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/orders/*/payment-method", "/api/orders/*/payment-proof", "/api/orders/*/attach-customer").permitAll()
                         // Must be declared before the GET /api/orders/{id} permitAll rule
                         // below, which would otherwise also match this literal segment and
@@ -241,6 +242,8 @@ public class SecurityConfig {
                         .requestMatchers(HttpMethod.DELETE, "/api/customers/**").hasAuthority(P_MANAGE_CUSTOMERS)
 
                         // ── Enterprises (seller applications/review — platform-only) ──
+                        // A shop's own payment numbers — declared before the generic /api/enterprises/** rules below.
+                        .requestMatchers("/api/enterprises/me/payment-settings").hasAuthority(P_MANAGE_PAYMENT_SETTINGS)
                         .requestMatchers(HttpMethod.GET, "/api/enterprises/**").hasAuthority(P_VIEW_ENTERPRISES)
                         .requestMatchers(HttpMethod.POST, "/api/enterprises/*/approve", "/api/enterprises/*/reject", "/api/enterprises/*/suspend", "/api/enterprises/*/reactivate").hasAuthority(P_MANAGE_ENTERPRISES)
 

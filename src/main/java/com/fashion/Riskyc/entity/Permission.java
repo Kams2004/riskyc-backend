@@ -55,5 +55,7 @@ public enum Permission {
     /** See/review seller applications and the full enterprise list — platform-only, never granted to an enterprise-scoped role. */
     VIEW_ENTERPRISES,
     /** Approve/reject applications, suspend/reactivate an enterprise — platform-only. */
-    MANAGE_ENTERPRISES
+    MANAGE_ENTERPRISES,
+    /** Set the shop's own Orange Money / MTN numbers that its customers pay into — each seller receives and validates its own payments. */
+    MANAGE_PAYMENT_SETTINGS
 }

@@ -7,6 +7,7 @@ import com.fashion.Riskyc.dto.request.OrderItemRequest;
 import com.fashion.Riskyc.dto.response.CustomerInfoResponse;
 import com.fashion.Riskyc.dto.response.OrderItemResponse;
 import com.fashion.Riskyc.dto.response.OrderResponse;
+import com.fashion.Riskyc.dto.response.PaymentPlanResponse;
 import com.fashion.Riskyc.entity.*;
 import com.fashion.Riskyc.exception.BadRequestException;
 import com.fashion.Riskyc.exception.ConflictException;
@@ -58,6 +59,7 @@ public class OrderService {
     private final TwilioSmsService twilioSmsService;
     private final ConversationService conversationService;
     private final PricingService pricingService;
+    private final PaymentAccountService paymentAccountService;
 
     /** Twilio is preferred over Orange when both happen to be configured — never both, so having a second provider set up doesn't double the SMS cost of an order. */
     private void sendCustomerSms(String phone, String message) {
@@ -71,17 +73,6 @@ public class OrderService {
     @Value("${app.site.url}")
     private String siteUrl;
 
-    @Value("${app.payment.orange-money-code}")
-    private String orangeMoneyCode;
-
-    @Value("${app.payment.orange-money-name}")
-    private String orangeMoneyName;
-
-    @Value("${app.payment.mobile-money-code}")
-    private String mobileMoneyCode;
-
-    @Value("${app.payment.mobile-money-name}")
-    private String mobileMoneyName;
 
     /** Platform staff (no scope) see every order; a seller's scoped admin sees only their own enterprise's orders. */
     @Transactional(readOnly = true)
@@ -98,8 +89,9 @@ public class OrderService {
     public List<OrderResponse> listCompletedForPos() {
         UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
         List<OrderStatus> statuses = List.of(OrderStatus.PACKAGED);
+        // Riskyc's till counts only Riskyc's own online sales — every seller's are theirs.
         List<Order> orders = scopeId == null
-                ? orderRepository.findByStatusInOrderByCreatedAtDesc(statuses)
+                ? platformOrders(orderRepository.findByStatusInOrderByCreatedAtDesc(statuses))
                 : orderRepository.findByEnterpriseIdAndStatusInOrderByCreatedAtDesc(scopeId, statuses);
         return orders.stream().map(this::toResponse).toList();
     }
@@ -115,8 +107,9 @@ public class OrderService {
     public List<OrderResponse> listPackingQueue() {
         UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
         List<OrderStatus> statuses = List.of(OrderStatus.VALIDATED, OrderStatus.PACKAGING, OrderStatus.PACKAGED);
+        // Each seller packs its own orders; Riskyc's packers see Riskyc's own store's queue.
         List<Order> orders = scopeId == null
-                ? orderRepository.findByStatusInOrderByCreatedAtDesc(statuses)
+                ? platformOrders(orderRepository.findByStatusInOrderByCreatedAtDesc(statuses))
                 : orderRepository.findByEnterpriseIdAndStatusInOrderByCreatedAtDesc(scopeId, statuses);
         return orders.stream().map(this::toResponse).toList();
     }
@@ -125,6 +118,23 @@ public class OrderService {
     @Transactional(readOnly = true)
     public List<OrderResponse> listByCheckoutGroup(UUID checkoutGroupId) {
         return orderRepository.findByCheckoutGroupIdOrderByCreatedAtDesc(checkoutGroupId).stream().map(this::toResponse).toList();
+    }
+
+    /** Riskyc's own store's orders (and pre-marketplace ones with no shop). */
+    private static List<Order> platformOrders(List<Order> orders) {
+        return orders.stream().filter(o -> o.getEnterprise() == null || o.getEnterprise().isPlatformDefault()).toList();
+    }
+
+    /**
+     * Confirming a payment and packing belong to the shop that was paid. A seller's order is handled by that seller's
+     * own admins — Riskyc's staff can follow it, but the money went to the seller's account, so only they can confirm it.
+     */
+    private void requireHandledBySeller(Order order, String action) {
+        Enterprise shop = order.getEnterprise();
+        if (shop == null || shop.isPlatformDefault()) return;
+        if (CurrentAdmin.enterpriseIdOrNull() == null) {
+            throw new ForbiddenException("Only " + shop.getName() + " can " + action + " — this order was paid to their own account.");
+        }
     }
 
     private void requireOwnedOrPlatform(Order order) {
@@ -183,6 +193,63 @@ public class OrderService {
         });
     }
 
+    /** Each line's product and the price the customer pays for it, bulk pricing applied per product. */
+    private record PricedCart(List<Product> productsByIndex, BigDecimal[] lineTotals) {}
+
+    /**
+     * What checkout shows before the customer pays: for each shop in the cart, the amount to send and where to send it
+     * (that shop's own dial codes, amount filled in). Same stock check as check-availability and the same prices
+     * create() will charge, so what's shown is exactly what each order will cost.
+     */
+    @Transactional(readOnly = true)
+    public PaymentPlanResponse paymentPlan(List<OrderItemRequest> items) {
+        checkAvailability(items);
+        PricedCart priced = priceCart(items);
+        Map<UUID, BigDecimal> amounts = new LinkedHashMap<>();
+        Map<UUID, Enterprise> shops = new LinkedHashMap<>();
+        for (int i = 0; i < items.size(); i++) {
+            Enterprise shop = priced.productsByIndex().get(i).getEnterprise();
+            UUID key = shop != null ? shop.getId() : null;
+            amounts.merge(key, priced.lineTotals()[i], BigDecimal::add);
+            shops.putIfAbsent(key, shop);
+        }
+        List<PaymentPlanResponse.Seller> sellers = new ArrayList<>(amounts.size());
+        amounts.forEach((key, amount) -> {
+            Enterprise shop = shops.get(key);
+            List<PaymentPlanResponse.Method> methods = paymentAccountService.accountsFor(shop).stream()
+                    .map(a -> new PaymentPlanResponse.Method(a.method(), a.codeFor(amount), a.accountName()))
+                    .toList();
+            sellers.add(new PaymentPlanResponse.Seller(key, shop != null ? shop.getName() : "Riskyc Fashion", amount,
+                    !methods.isEmpty(), methods));
+        });
+        return new PaymentPlanResponse(sellers);
+    }
+
+    private PricedCart priceCart(List<OrderItemRequest> items) {
+        List<Product> productsByIndex = new ArrayList<>(items.size());
+        Map<UUID, List<Integer>> indicesByProduct = new LinkedHashMap<>();
+        for (int i = 0; i < items.size(); i++) {
+            OrderItemRequest itemReq = items.get(i);
+            Product product = productRepository.findById(itemReq.productId())
+                    .orElseThrow(() -> new BadRequestException("Product not found: " + itemReq.productId()));
+            if (product.getEnterprise() != null && product.getEnterprise().getStatus() == EnterpriseStatus.SUSPENDED) {
+                throw new BadRequestException("This product is no longer available: " + product.getName());
+            }
+            productsByIndex.add(product);
+            indicesByProduct.computeIfAbsent(product.getId(), k -> new ArrayList<>()).add(i);
+        }
+        BigDecimal[] lineTotals = new BigDecimal[items.size()];
+        for (List<Integer> indices : indicesByProduct.values()) {
+            Product product = productsByIndex.get(indices.get(0));
+            List<Integer> quantities = indices.stream().map(i -> items.get(i).quantity()).toList();
+            List<BigDecimal> allocated = pricingService.allocateGroupedLineTotals(product.getPrice(), product.getBulkPrices(), quantities);
+            for (int j = 0; j < indices.size(); j++) {
+                lineTotals[indices.get(j)] = allocated.get(j);
+            }
+        }
+        return new PricedCart(productsByIndex, lineTotals);
+    }
+
     public List<OrderResponse> create(CreateOrderRequest request) {
         Customer customer = null;
         if (request.customerId() != null) {
@@ -198,31 +265,15 @@ public class OrderService {
         // Grouping by product (not by enterprise) is correct even after the
         // enterprise split below — a single product can only ever belong to
         // one enterprise, so this pass is unaffected by it.
-        List<Product> productsByIndex = new ArrayList<>(request.items().size());
-        Map<UUID, List<Integer>> indicesByProduct = new LinkedHashMap<>();
-        for (int i = 0; i < request.items().size(); i++) {
-            OrderItemRequest itemReq = request.items().get(i);
-            Product product = productRepository.findById(itemReq.productId())
-                    .orElseThrow(() -> new BadRequestException("Product not found: " + itemReq.productId()));
-            // The storefront's own listing/search already hide a suspended
-            // seller's catalog from new discovery, but a product already
-            // sitting in a customer's cart from before that seller was
-            // suspended isn't caught by that — block it here too, at the
-            // point of actually placing the order.
-            if (product.getEnterprise() != null && product.getEnterprise().getStatus() == EnterpriseStatus.SUSPENDED) {
-                throw new BadRequestException("This product is no longer available: " + product.getName());
-            }
-            productsByIndex.add(product);
-            indicesByProduct.computeIfAbsent(product.getId(), k -> new ArrayList<>()).add(i);
-        }
-
-        BigDecimal[] lineTotals = new BigDecimal[request.items().size()];
-        for (List<Integer> indices : indicesByProduct.values()) {
-            Product product = productsByIndex.get(indices.get(0));
-            List<Integer> quantities = indices.stream().map(i -> request.items().get(i).quantity()).toList();
-            List<BigDecimal> allocated = pricingService.allocateGroupedLineTotals(product.getPrice(), product.getBulkPrices(), quantities);
-            for (int j = 0; j < indices.size(); j++) {
-                lineTotals[indices.get(j)] = allocated.get(j);
+        // A suspended seller's product already sitting in a cart is refused here too (see priceCart).
+        PricedCart priced = priceCart(request.items());
+        List<Product> productsByIndex = priced.productsByIndex();
+        BigDecimal[] lineTotals = priced.lineTotals();
+        // Customers pay each shop directly — a shop that hasn't set up its payment numbers can't take orders yet.
+        for (Product product : productsByIndex) {
+            Enterprise shop = product.getEnterprise();
+            if (!paymentAccountService.acceptsPayments(shop)) {
+                throw new ConflictException(shop.getName() + " isn't accepting online payments yet — remove its items to continue.");
             }
         }
 
@@ -314,11 +365,14 @@ public class OrderService {
         // Locked like expireIfUnpaid, so an expiry and a payment step can't both win.
         Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow(() -> ResourceNotFoundException.of("Order", orderId));
         requireNotCancelled(order);
+        // The customer pays the shop itself — its own number, never Riskyc's on a seller's behalf.
+        PaymentAccountService.Account account = paymentAccountService.accountFor(order.getEnterprise(), method)
+                .orElseThrow(() -> new ConflictException(paymentAccountService.acceptsPayments(order.getEnterprise())
+                        ? shopName(order) + " doesn't accept " + (method == PaymentMethod.ORANGE_MONEY ? "Orange Money" : "MTN Mobile Money") + " — choose another payment method."
+                        : shopName(order) + " isn't accepting online payments yet."));
         order.setPaymentMethod(method);
-        String template = method == PaymentMethod.ORANGE_MONEY ? orangeMoneyCode : mobileMoneyCode;
-        String amount = order.getTotal().setScale(0, java.math.RoundingMode.DOWN).toPlainString();
-        order.setPaymentCode(String.format(template, amount));
-        order.setPaymentAccountName(method == PaymentMethod.ORANGE_MONEY ? orangeMoneyName : mobileMoneyName);
+        order.setPaymentCode(account.codeFor(order.getTotal()));
+        order.setPaymentAccountName(account.accountName());
         order.setStatus(OrderStatus.AWAITING_PAYMENT);
         return toResponse(order);
     }
@@ -359,6 +413,7 @@ public class OrderService {
     public OrderResponse updateStatus(UUID orderId, OrderStatus status, String reason) {
         Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow(() -> ResourceNotFoundException.of("Order", orderId));
         requireOwnedOrPlatform(order);
+        if (status == OrderStatus.VALIDATED) requireHandledBySeller(order, "confirm this payment");
         requireAllowedTransition(order.getStatus(), status);
         order.setStatus(status);
         order.setStatusChangedByName(CurrentAdmin.nameOrNull());
@@ -454,6 +509,10 @@ public class OrderService {
         }
     }
 
+    private static String shopName(Order order) {
+        return order.getEnterprise() != null ? order.getEnterprise().getName() : "This shop";
+    }
+
     /** Puts a cancelled order's items back in stock — the same stock the till sells from. */
     private void restoreStock(Order order) {
         for (OrderItem item : order.getItems()) {
@@ -476,6 +535,7 @@ public class OrderService {
         // of the second one correctly losing the race below.
         Order order = orderRepository.findByIdForUpdate(orderId).orElseThrow(() -> ResourceNotFoundException.of("Order", orderId));
         requireOwnedOrPlatform(order);
+        requireHandledBySeller(order, "pack this order");
         if (order.getStatus() != OrderStatus.VALIDATED) {
             if (order.getStatus() == OrderStatus.PACKAGING) {
                 throw new ConflictException("Already being packaged by " + order.getPackagingStartedByName());
@@ -500,6 +560,7 @@ public class OrderService {
     public OrderResponse completePackaging(UUID orderId) {
         Order order = getOrThrow(orderId);
         requireOwnedOrPlatform(order);
+        requireHandledBySeller(order, "pack this order");
         if (order.getStatus() != OrderStatus.PACKAGING) {
             throw new ConflictException("Order isn't currently being packaged (status is " + order.getStatus() + ")");
         }
@@ -591,6 +652,7 @@ public class OrderService {
                 o.getId(),
                 o.getCustomer() != null ? o.getCustomer().getId() : null,
                 o.getEnterprise() != null ? o.getEnterprise().getId() : null,
+                o.getEnterprise() != null ? o.getEnterprise().getName() : null,
                 o.getCheckoutGroupId(),
                 items,
                 o.getTotal(),

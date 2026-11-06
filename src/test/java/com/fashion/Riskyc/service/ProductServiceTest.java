@@ -61,6 +61,8 @@ class ProductServiceTest {
     private ProductVariantService productVariantService;
     @Mock
     private EnterpriseRepository enterpriseRepository;
+    @Mock
+    private PaymentAccountService paymentAccountService;
 
     @InjectMocks
     private ProductService productService;

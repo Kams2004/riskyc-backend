@@ -7,6 +7,7 @@ import com.fashion.Riskyc.dto.request.CreateOrderRequest;
 import com.fashion.Riskyc.dto.request.SetPaymentMethodRequest;
 import com.fashion.Riskyc.dto.request.UpdateOrderStatusRequest;
 import com.fashion.Riskyc.dto.response.OrderResponse;
+import com.fashion.Riskyc.dto.response.PaymentPlanResponse;
 import com.fashion.Riskyc.service.OrderService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -62,6 +63,12 @@ public class OrderController {
     }
 
     /** 204 when every line is in stock; 409 with the same "Sold out" message create() would give. Called before payment. */
+    /** Each shop in the cart: the amount and that shop's own payment codes — shown before the customer pays. */
+    @PostMapping("/payment-plan")
+    public PaymentPlanResponse paymentPlan(@Valid @RequestBody CheckAvailabilityRequest request) {
+        return orderService.paymentPlan(request.items());
+    }
+
     @PostMapping("/check-availability")
     public ResponseEntity<Void> checkAvailability(@Valid @RequestBody CheckAvailabilityRequest request) {
         orderService.checkAvailability(request.items());

@@ -58,7 +58,9 @@ public class EnterpriseService {
             Permission.VIEW_USERS, Permission.MANAGE_USERS,
             // A seller runs their own till: every POS screen, including settings, tills and voiding a sale.
             Permission.VIEW_POS, Permission.MANAGE_POS, Permission.POS_SELL, Permission.POS_VIEW_SALES,
-            Permission.POS_RECONCILE, Permission.VOID_POS_SALE
+            Permission.POS_RECONCILE, Permission.VOID_POS_SALE,
+            // A seller receives and confirms its own payments, and packs and ships its own orders with its own team.
+            Permission.MANAGE_PAYMENT_SETTINGS, Permission.MANAGE_DELIVERY_AGENTS, Permission.SEND_PACKAGING_MESSAGE
     );
 
     private final EnterpriseRepository enterpriseRepository;

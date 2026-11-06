@@ -65,6 +65,7 @@ public class ProductService {
     private final TranslationService translationService;
     private final ProductVariantService productVariantService;
     private final EnterpriseRepository enterpriseRepository;
+    private final PaymentAccountService paymentAccountService;
 
     @Transactional(readOnly = true)
     public Page<ProductResponse> list(Pageable pageable, String categorySlug, String subcategorySlug, String search) {
@@ -551,7 +552,8 @@ public class ProductService {
         Enterprise enterprise = p.getEnterprise();
         SellerSummaryResponse seller = enterprise == null
                 ? null
-                : new SellerSummaryResponse(enterprise.getName(), enterprise.getContactPhone(), enterprise.getWhatsappNumber());
+                : new SellerSummaryResponse(enterprise.getName(), enterprise.getContactPhone(), enterprise.getWhatsappNumber(),
+                        paymentAccountService.acceptsPayments(enterprise));
 
         return new ProductResponse(
                 p.getId(),

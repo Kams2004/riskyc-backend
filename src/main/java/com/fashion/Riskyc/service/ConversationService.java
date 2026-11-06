@@ -141,11 +141,13 @@ public class ConversationService {
 
         // A snapshot, not a live reference — a contact edited/deleted later
         // shouldn't rewrite what an already-sent confirmation showed.
-        // Uses the platform's own roster — Order doesn't carry an owning
-        // enterprise yet (that lands with order splitting), so there's no
-        // per-seller roster to pick between here until then; today, every
-        // order is the platform's own anyway, so this is unchanged behavior.
-        List<DeliveryContactSnapshot> deliveryContacts = deliveryContactRepository.findAllByEnterpriseIsNullOrderByPositionAscCreatedAtAsc()
+        // The delivery team of the shop that packed it: a seller's order gets that seller's own roster, Riskyc's own
+        // store (and pre-marketplace orders) the platform roster, which is stored without a shop.
+        Enterprise shop = order.getEnterprise();
+        List<DeliveryContact> roster = shop != null && !shop.isPlatformDefault()
+                ? deliveryContactRepository.findAllByEnterpriseIdOrderByPositionAscCreatedAtAsc(shop.getId())
+                : deliveryContactRepository.findAllByEnterpriseIsNullOrderByPositionAscCreatedAtAsc();
+        List<DeliveryContactSnapshot> deliveryContacts = roster
                 .stream()
                 .map(c -> new DeliveryContactSnapshot(c.getName(), c.getPhone()))
                 .toList();

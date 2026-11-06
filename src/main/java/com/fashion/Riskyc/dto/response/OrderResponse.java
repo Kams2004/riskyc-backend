@@ -13,6 +13,8 @@ public record OrderResponse(
         UUID customerId,
         /** Which seller this order's items belong to — null only for pre-marketplace orders DataSeeder hasn't backfilled yet. */
         UUID enterpriseId,
+        /** The shop this order was paid to and is handled by. */
+        String sellerName,
         /** Groups this order with any siblings from the same checkout (one per seller involved) — see GET /api/orders/group/{checkoutGroupId}. */
         UUID checkoutGroupId,
         List<OrderItemResponse> items,

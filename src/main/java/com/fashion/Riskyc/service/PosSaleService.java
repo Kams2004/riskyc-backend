@@ -46,6 +46,10 @@ import java.util.UUID;
 @Transactional
 public class PosSaleService {
 
+    /** What a calculator (amount) line is called on the ticket and in Sales History when the cashier gives no label. */
+    public static final String MIXED_ARTICLES_LABEL = "Articles divers";
+
+
     private static final String RECEIPT_FOLDER = "pos-receipts";
 
     private final PosSaleRepository posSaleRepository;
@@ -126,10 +130,23 @@ public class PosSaleService {
 
         UUID scopeId = CurrentAdmin.enterpriseIdOrNull();
 
+        // A line is a product (priced and stock-counted) or an amount typed on the till's calculator ("Articles
+        // divers": no product, no stock, no bulk pricing). productsByIndex holds null for amount lines.
         List<Product> productsByIndex = new ArrayList<>(request.items().size());
         Map<UUID, List<Integer>> indicesByProduct = new LinkedHashMap<>();
         for (int i = 0; i < request.items().size(); i++) {
             PosSaleItemRequest item = request.items().get(i);
+            boolean hasProduct = item.productId() != null;
+            boolean hasAmount = item.amount() != null;
+            if (hasProduct == hasAmount) {
+                throw new BadRequestException("Each sale line needs either a product or an amount — not both, not neither.");
+            }
+            if (hasAmount) {
+                if (item.amount().signum() <= 0) throw new BadRequestException("An amount line must be more than 0.");
+                productsByIndex.add(null);
+                continue;
+            }
+            if (item.quantity() == null) throw new BadRequestException("A product line needs a quantity.");
             Product product = productRepository.findById(item.productId())
                     .orElseThrow(() -> new BadRequestException("Product not found: " + item.productId()));
             // A scoped seller's till can only ever ring up their own
@@ -150,6 +167,12 @@ public class PosSaleService {
         // product (e.g. one per size) still gets the combined-quantity
         // discount tier, not each line falling short of it individually.
         BigDecimal[] lineTotals = new BigDecimal[request.items().size()];
+        for (int i = 0; i < request.items().size(); i++) {
+            PosSaleItemRequest item = request.items().get(i);
+            if (item.isAmountLine()) {
+                lineTotals[i] = item.amount().multiply(BigDecimal.valueOf(item.effectiveQuantity())).setScale(2, RoundingMode.HALF_UP);
+            }
+        }
         for (List<Integer> indices : indicesByProduct.values()) {
             Product product = productsByIndex.get(indices.get(0));
             List<Integer> quantities = indices.stream().map(i -> request.items().get(i).quantity()).toList();
@@ -163,17 +186,19 @@ public class PosSaleService {
         // deadlock-avoidance reasoning as OrderService.create(), even though
         // a decrement here can never itself be rejected.
         List<Integer> lockOrder = new ArrayList<>();
-        for (int i = 0; i < request.items().size(); i++) lockOrder.add(i);
+        for (int i = 0; i < request.items().size(); i++) {
+            if (productsByIndex.get(i) != null) lockOrder.add(i); // amount lines have no stock to lock
+        }
         lockOrder.sort(Comparator.<Integer, UUID>comparing(i -> productsByIndex.get(i).getId())
-                .thenComparing(i -> request.items().get(i).selectedColor())
-                .thenComparing(i -> request.items().get(i).selectedSize()));
+                .thenComparing(i -> request.items().get(i).colorOrEmpty())
+                .thenComparing(i -> request.items().get(i).sizeOrEmpty()));
 
         boolean anyNegative = false;
         Integer[] stockBeforeByIndex = new Integer[request.items().size()];
         for (int i : lockOrder) {
             PosSaleItemRequest item = request.items().get(i);
             Product product = productsByIndex.get(i);
-            ProductVariant variant = productVariantService.resolveForUpdate(product, item.selectedColor(), item.selectedSize());
+            ProductVariant variant = productVariantService.resolveForUpdate(product, item.colorOrEmpty(), item.sizeOrEmpty());
             stockBeforeByIndex[i] = variant.getQuantity();
             if (productVariantService.decrementAllowingNegative(variant, item.quantity())) {
                 anyNegative = true;
@@ -188,7 +213,7 @@ public class PosSaleService {
                 .soldAt(request.soldAt())
                 .stockReconciliationFlag(anyNegative)
                 .total(BigDecimal.ZERO)
-                .enterprise(resolveSaleEnterprise(scopeId, productsByIndex))
+                .enterprise(resolveSaleEnterprise(scopeId, productsByIndex.stream().filter(java.util.Objects::nonNull).toList()))
                 .build();
 
         BigDecimal total = BigDecimal.ZERO;
@@ -197,14 +222,19 @@ public class PosSaleService {
             Product product = productsByIndex.get(i);
             BigDecimal lineTotal = lineTotals[i];
             total = total.add(lineTotal);
-            BigDecimal effectiveUnitPrice = lineTotal.divide(BigDecimal.valueOf(itemReq.quantity()), 2, RoundingMode.HALF_UP);
+            int quantity = itemReq.effectiveQuantity();
+            BigDecimal effectiveUnitPrice = lineTotal.divide(BigDecimal.valueOf(quantity), 2, RoundingMode.HALF_UP);
+            // An amount line keeps no product and no stock figure, so it never shows up in Reconciliation and a void
+            // has nothing to restock for it (see void()).
+            String name = product != null ? product.getName()
+                    : (itemReq.label() != null && !itemReq.label().isBlank() ? itemReq.label().trim() : MIXED_ARTICLES_LABEL);
             sale.getItems().add(PosSaleItem.builder()
                     .sale(sale)
                     .product(product)
-                    .productName(product.getName())
-                    .quantity(itemReq.quantity())
-                    .selectedColor(itemReq.selectedColor())
-                    .selectedSize(itemReq.selectedSize())
+                    .productName(name)
+                    .quantity(quantity)
+                    .selectedColor(itemReq.colorOrEmpty())
+                    .selectedSize(itemReq.sizeOrEmpty())
                     .unitPrice(effectiveUnitPrice)
                     .stockBeforeSale(stockBeforeByIndex[i])
                     .build());
@@ -269,6 +299,10 @@ public class PosSaleService {
     private Enterprise resolveSaleEnterprise(UUID scopeId, List<Product> productsByIndex) {
         if (scopeId != null) {
             return enterpriseRepository.findById(scopeId).orElseThrow(() -> ResourceNotFoundException.of("Enterprise", scopeId));
+        }
+        // Riskyc's own till ringing up only calculator amounts: the sale is Riskyc's store's.
+        if (productsByIndex.isEmpty()) {
+            return enterpriseRepository.findByPlatformDefaultTrue().orElse(null);
         }
         Enterprise first = productsByIndex.isEmpty() ? null : productsByIndex.get(0).getEnterprise();
         if (first == null) return null;

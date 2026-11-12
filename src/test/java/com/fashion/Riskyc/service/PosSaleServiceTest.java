@@ -166,4 +166,63 @@ class PosSaleServiceTest {
 
         assertThatThrownBy(() -> posSaleService.voidSale(sale.getId())).isInstanceOf(ForbiddenException.class);
     }
+
+    // ── Calculator mode: amount lines ("Articles divers") ──
+
+    private PosSaleItemRequest amountLine(String amount, Integer quantity, String label) {
+        return new PosSaleItemRequest(null, quantity, null, null, new BigDecimal(amount), label);
+    }
+
+    @Test
+    void create_amountOnlySale_recordsMixedArticlesWithoutTouchingStock() {
+        init();
+        stubSave();
+        when(posSaleRepository.findByClientSaleId(any())).thenReturn(Optional.empty());
+        Enterprise riskyc = Enterprise.builder().id(UUID.randomUUID()).name("Riskyc Fashion").platformDefault(true).build();
+        when(enterpriseRepository.findByPlatformDefaultTrue()).thenReturn(Optional.of(riskyc));
+
+        PosSaleResponse sale = posSaleService.create(requestFor(List.of(
+                amountLine("3000", null, null),
+                amountLine("2500", 2, null),
+                amountLine("1500", 1, "Ceinture"))));
+
+        assertThat(sale.total()).isEqualByComparingTo("9500");
+        assertThat(sale.items()).extracting(i -> i.productName()).containsExactly("Articles divers", "Articles divers", "Ceinture");
+        assertThat(sale.items()).extracting(i -> i.productId()).containsOnlyNulls();
+        assertThat(sale.stockReconciliationFlag()).isFalse();
+        org.mockito.Mockito.verifyNoInteractions(productRepository, productVariantService);
+    }
+
+    @Test
+    void create_mixedSale_pricesTheProductAsBeforeAndAddsTheAmounts() {
+        init();
+        stubSave();
+        when(posSaleRepository.findByClientSaleId(any())).thenReturn(Optional.empty());
+        Enterprise riskyc = Enterprise.builder().id(UUID.randomUUID()).name("Riskyc Fashion").platformDefault(true).build();
+        Product product = productFor(riskyc, new BigDecimal("3000"));
+        when(productRepository.findById(product.getId())).thenReturn(Optional.of(product));
+        stubVariant(product, 10);
+
+        PosSaleResponse sale = posSaleService.create(requestFor(List.of(
+                new PosSaleItemRequest(product.getId(), 2, "", ""),
+                amountLine("1000", null, null))));
+
+        assertThat(sale.total()).isEqualByComparingTo("7000");
+        assertThat(sale.items()).hasSize(2);
+        org.mockito.Mockito.verify(productVariantService).decrementAllowingNegative(any(), eq(2));
+    }
+
+    @Test
+    void create_lineWithBothOrNeitherProductAndAmount_isRejected() {
+        init();
+        when(posSaleRepository.findByClientSaleId(any())).thenReturn(Optional.empty());
+        UUID productId = UUID.randomUUID();
+
+        assertThatThrownBy(() -> posSaleService.create(requestFor(List.of(
+                new PosSaleItemRequest(productId, 1, "", "", new BigDecimal("500"), null)))))
+                .isInstanceOf(com.fashion.Riskyc.exception.BadRequestException.class);
+        assertThatThrownBy(() -> posSaleService.create(requestFor(List.of(
+                new PosSaleItemRequest(null, 1, "", "", null, null)))))
+                .isInstanceOf(com.fashion.Riskyc.exception.BadRequestException.class);
+    }
 }
